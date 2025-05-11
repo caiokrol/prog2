@@ -52,9 +52,6 @@ int salvar_diretorio(FILE *arq, membro_t *membros, int qtd) {
 }
 
 int buscar_membro(membro_t *membros, int qtd, const char *nome) {
-    printf("Chamou buscar membro\n");
-    printf("Nome: %s\n", nome);
-    printf("Qtd: %d\n", qtd);
     if (!membros || !nome || qtd <= 0){
         return -1;
     };
@@ -67,8 +64,8 @@ int buscar_membro(membro_t *membros, int qtd, const char *nome) {
 }
 
 
-int gerar_uid(membro_t *membros, int qtd) {
-    int max_uid = 0;
+__uid_t gerar_uid(membro_t *membros, int qtd) {
+    __uid_t max_uid = 0;
 
     for (int i = 0; i < qtd; i++) {
         if (membros[i].uid > max_uid)

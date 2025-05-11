@@ -6,6 +6,16 @@
 #include "diretorio.h"
 #include "util.h"
 
+
+#define EXTENSAO ".vc"
+
+int termina_com(const char *str, const char *sufixo) {
+    size_t len_str = strlen(str);
+    size_t len_sufixo = strlen(sufixo);
+    if (len_str < len_sufixo) return 0;
+    return strcmp(str + len_str - len_sufixo, sufixo) == 0;
+}
+
 void listar_membros(membro_t *m, int qtd) {
     printf("%-20s %-5s %-10s %-10s %-20s %-6s %-8s\n",
         "Nome", "UID", "TamOrig", "TamDisco", "DataMod", "Ordem", "Offset");
@@ -25,7 +35,14 @@ int main(int argc, char *argv[]) {
     }
 
     const char *opcao = argv[1];
-    const char *arquivo_vc = argv[2];
+    char arquivo_vc[1024];
+
+    if (termina_com(argv[2], EXTENSAO)) {
+        strncpy(arquivo_vc, argv[2], sizeof(arquivo_vc));
+        arquivo_vc[sizeof(arquivo_vc) - 1] = '\0';
+    } else {
+        snprintf(arquivo_vc, sizeof(arquivo_vc), "%s%s", argv[2], EXTENSAO);
+    }
 
     FILE *arq = fopen(arquivo_vc, "r+b");
     if (!arq) arq = fopen(arquivo_vc, "w+b");

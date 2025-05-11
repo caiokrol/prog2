@@ -24,6 +24,7 @@ $(OUTDIR)/$(EXEC): $(OBJS)
 clean:
 	rm -f $(OBJS)
 	rm -f $(OUTDIR)/$(EXEC)
+	rm -rf cmk24
 
 # Recompila tudo
 rebuild: clean all
