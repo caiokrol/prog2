@@ -97,7 +97,14 @@ int inserir_membro(FILE *archive, membro_t **membros, int *qtd, int *cap, const 
         return -1;
     }
 
-    fread(buffer_in, 1, tamanho, entrada);
+    size_t lidos = fread(buffer_in, 1, tamanho, entrada);
+    if (lidos != (size_t)tamanho) {
+        fprintf(stderr, "Erro ao ler o arquivo %s\n", caminho);
+        free(buffer_in);
+        fclose(entrada);
+        return -1;
+    }
+
     fclose(entrada);
     m->tamanho_orig = tamanho;
 

@@ -2,7 +2,7 @@
 EXEC = vinac
 
 # Diretório de saída
-OUTDIR = login
+OUTDIR = cmk24
 
 # Fontes
 SRCS = main.c arquivo.c diretorio.c util.c lz.c
