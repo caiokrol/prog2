@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
 #include "diretorio.h"
 
 int carregar_diretorio(FILE *arq, membro_t **membros, int *qtd) {
@@ -50,9 +52,12 @@ int salvar_diretorio(FILE *arq, membro_t *membros, int qtd) {
 }
 
 int buscar_membro(membro_t *membros, int qtd, const char *nome) {
-    if (!membros || !nome || qtd <= 0)
+    printf("Chamou buscar membro\n");
+    printf("Nome: %s\n", nome);
+    printf("Qtd: %d\n", qtd);
+    if (!membros || !nome || qtd <= 0){
         return -1;
-
+    };
     for (int i = 0; i < qtd; i++) {
         if (strcmp(membros[i].nome, nome) == 0)
             return i;

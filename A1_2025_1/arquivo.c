@@ -10,6 +10,42 @@
 #include "lz.h"
 #include "diretorio.h"
 
+
+void move(FILE *archive, long i_m, unsigned long tamanho, long l_m) {
+    char *buffer = malloc(tamanho);
+    if (!buffer) {
+        fprintf(stderr, "Erro: falha ao alocar buffer na função move()\n");
+        return;
+    }
+
+    if (fseek(archive, i_m, SEEK_SET) != 0) {
+        fprintf(stderr, "Erro: fseek falhou na leitura em move()\n");
+        free(buffer);
+        return;
+    }
+
+    if (fread(buffer, 1, tamanho, archive) != tamanho) {
+        fprintf(stderr, "Erro: fread falhou na função move()\n");
+        free(buffer);
+        return;
+    }
+
+    if (fseek(archive, l_m, SEEK_SET) != 0) {
+        fprintf(stderr, "Erro: fseek falhou na escrita em move()\n");
+        free(buffer);
+        return;
+    }
+
+    if (fwrite(buffer, 1, tamanho, archive) != tamanho) {
+        fprintf(stderr, "Erro: fwrite falhou na função move()\n");
+        free(buffer);
+        return;
+    }
+
+    free(buffer);
+}
+
+
 int inserir_membro(FILE *archive, membro_t **membros, int *qtd, int *cap, const char *caminho, int compressao) {
     // Extrai nome do arquivo
     const char *barra = strrchr(caminho, '/');
@@ -17,7 +53,7 @@ int inserir_membro(FILE *archive, membro_t **membros, int *qtd, int *cap, const 
 
     // Verifica se já existe
     int pos = buscar_membro(*membros, *qtd, nome_arquivo);
-
+    printf("POS: %d\n", pos);
     // Se já existe, substitui
     if (pos >= 0) {
         (*membros)[pos].offset = -1;  // marca o anterior como inválido, se quiser
@@ -81,22 +117,47 @@ int inserir_membro(FILE *archive, membro_t **membros, int *qtd, int *cap, const 
         }
     }
 
-    fseek(archive, 0, SEEK_END);
-    m->offset = ftell(archive);
-    m->tamanho_disco = tamanho_final;
+// 1. Calcula novo tamanho do diretório
+long novo_tam_dir = sizeof(int) + (*qtd) * sizeof(membro_t);
 
-    if (usar_compressao) {
-        fwrite(buffer_out, 1, tamanho_final, archive);
-    } else {
-        fwrite(buffer_in, 1, tamanho, archive);
+// 2. Realoca os dados dos membros antigos para abrir espaço para o novo diretório
+if (*qtd > 1) {
+    for (int i = *qtd - 2; i >= 0; i--) {
+        long antigo_offset = (*membros)[i].offset;
+        long novo_offset = antigo_offset + sizeof(membro_t);  // espaço extra para novo membro no diretório
+        move(archive, antigo_offset, (*membros)[i].tamanho_disco, novo_offset);
+        (*membros)[i].offset = novo_offset;  // atualiza offset só depois do move
     }
+}
+
+// 3. Atualiza offset do novo membro
+if (*qtd == 1) {
+    m->offset = novo_tam_dir;  // primeiro membro, logo após diretório
+} else {
+    membro_t *ultimo = &(*membros)[*qtd - 2];
+    m->offset = ultimo->offset + ultimo->tamanho_disco;
+}
+
+// 4. Escreve o diretório atualizado (após os realocamentos)
+rewind(archive);
+salvar_diretorio(archive, *membros, *qtd);
+
+// 5. Grava os dados do novo membro
+fseek(archive, m->offset, SEEK_SET);
+if (usar_compressao) {
+    fwrite(buffer_out, 1, tamanho_final, archive);
+} else {
+    fwrite(buffer_in, 1, tamanho, archive);
+}
+
+m->tamanho_disco = tamanho_final;
+
+// 6. Escreve novamente o diretório no início (opcional se já gravou no passo 4)
+    rewind(archive);
+    salvar_diretorio(archive, *membros, *qtd);
 
     free(buffer_in);
     free(buffer_out);
-
-    // Volta ao início e salva o diretório atualizado
-    rewind(archive);
-    salvar_diretorio(archive, *membros, *qtd);
 
     return 0;
 }
@@ -177,14 +238,18 @@ int extrair_membro(FILE *archive, membro_t *membro) {
  * Retorna 0 em sucesso ou -1 em caso de erro (arquivo inválido ou membro não encontrado).
  */
 int remover_membro(FILE *archive, membro_t *membros, int *qtd, const char *nome) {
+    printf("Chegou a chamar a funcao\n");
     if (!archive || !membros || !qtd || !nome || *qtd <= 0)
         return -1;
-
+    printf("Viu se tudo eh != NULL\n");
     // 1) encontra índice
     int idx = buscar_membro(membros, *qtd, nome);
-    if (idx < 0)
+    if (idx < 0){
+        printf("idx do membro: %d", idx);
         return -1;  // não existe
 
+    }
+    printf("Chegou a encontrar o membro\n");
     // 2) desloca o restante do vetor para “apagar” o elemento idx
     memmove(&membros[idx],
             &membros[idx + 1],
@@ -201,3 +266,80 @@ int remover_membro(FILE *archive, membro_t *membros, int *qtd, const char *nome)
     return 0;
 }
 
+int mover_membro(FILE *archive, membro_t *membros, int qtd,
+                 const char *orig, const char *dest) {
+    if (!archive || !membros || qtd <= 0 || !orig || !dest)
+        return -1;
+
+    // 1) localiza orig e dest
+    int idx_o = buscar_membro(membros, qtd, orig);
+    int idx_d = buscar_membro(membros, qtd, dest);
+    if (idx_o < 0 || idx_d < 0)
+        return -1;
+
+    // 2) salva uma cópia temporária do membro a mover
+    membro_t temp = membros[idx_o];
+
+    // 3) remove o elemento orig do vetor
+    memmove(&membros[idx_o],
+            &membros[idx_o + 1],
+            sizeof(membro_t) * (qtd - idx_o - 1));
+
+    // 4) ajusta índice de inserção de dest, caso venha depois de orig
+    if (idx_d > idx_o) 
+        idx_d--;
+
+    // 5) insere temp logo após idx_d: desloca o resto e coloca temp
+    int insert_pos = idx_d + 1;
+    memmove(&membros[insert_pos + 1],
+            &membros[insert_pos],
+            sizeof(membro_t) * (qtd - insert_pos - 1));
+    membros[insert_pos] = temp;
+
+    // 6) atualiza campo .ordem em todo o vetor
+    for (int i = 0; i < qtd; i++) {
+        membros[i].ordem = i;
+    }
+
+    // 7) regrava o diretório no início do arquivo
+    rewind(archive);
+    if (salvar_diretorio(archive, membros, qtd) != 0)
+        return -1;
+
+    return 0;
+}
+
+
+int inspecionar_membro(FILE *archive, membro_t *m) {
+    if (!archive || !m) return -1;
+
+    printf("==> Inspecionando membro: %s\n", m->nome);
+    printf("  Offset: %ld\n", m->offset);
+    printf("  Tamanho em disco: %zu\n", m->tamanho_disco);
+
+    if (fseek(archive, m->offset, SEEK_SET) != 0) {
+        perror("fseek");
+        return -1;
+    }
+
+    unsigned char *buffer = malloc(m->tamanho_disco);
+    if (!buffer) {
+        perror("malloc");
+        return -1;
+    }
+
+    size_t lidos = fread(buffer, 1, m->tamanho_disco, archive);
+    if (lidos != m->tamanho_disco) {
+        printf("Erro ao ler dados do membro. Esperado %zu, lido %zu\n", m->tamanho_disco, lidos);
+        free(buffer);
+        return -1;
+    }
+
+    printf("  Primeiros bytes do conteúdo:\n    ");
+    for (size_t i = 0; i < (m->tamanho_disco < 16 ? m->tamanho_disco : 16); i++)
+        printf("%02X ", buffer[i]);
+    printf("\n");
+
+    free(buffer);
+    return 0;
+}

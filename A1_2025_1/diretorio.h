@@ -3,6 +3,8 @@
 
 #include <stdio.h>
 #include <time.h>
+#include <string.h>
+
 
 typedef struct {
     char nome[256];         // nome do membro (sem espaços)
@@ -11,7 +13,7 @@ typedef struct {
     size_t tamanho_disco;   // tamanho após compressão (ou igual se não comprimido)
     time_t data_mod;        // data de modificação
     int ordem;              // ordem no arquivo
-    long offset;            // onde os dados começam no archive
+    long offset;            // onde os dados começam no archive    
 } membro_t;
 
 int carregar_diretorio(FILE *archive, membro_t **membros, int *qtd);

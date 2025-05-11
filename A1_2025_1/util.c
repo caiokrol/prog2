@@ -16,11 +16,7 @@ void printar_info(const membro_t *m) {
     printf("ID: %d\n", m->uid);
     printf("Tamanho original: %zu KB\n", (m->tamanho_orig / 1024));
     printf("Tamanho em disco: %zu KB\n", (m->tamanho_disco / 1024));
-    printf("Data de Modificacao: %s\n", (ctime(m->data_mod))); // ref: https://petbcc.ufscar.br/timefuncoes/
+    printf("Data de Modificacao: %s", asctime(localtime(&m->data_mod))); // ref: https://petbcc.ufscar.br/timefuncoes/
     printf("Ordem no arquivo: %d\n", m->ordem);
     printf("Offset: %ld\n", m->offset);
-}
-
-void gerar_nome_temporario(char *buffer, size_t tamanho){
-    
 }
