@@ -55,6 +55,7 @@ int buscar_membro(membro_t *membros, int qtd, const char *nome) {
     if (!membros || !nome || qtd <= 0){
         return -1;
     };
+    //Compara o nome do membro com o nome passado no parametro
     for (int i = 0; i < qtd; i++) {
         if (strcmp(membros[i].nome, nome) == 0)
             return i;
@@ -67,11 +68,13 @@ int buscar_membro(membro_t *membros, int qtd, const char *nome) {
 __uid_t gerar_uid(membro_t *membros, int qtd) {
     __uid_t max_uid = 0;
 
+    // Encontra o maior UID existente
     for (int i = 0; i < qtd; i++) {
         if (membros[i].uid > max_uid)
             max_uid = membros[i].uid;
     }
 
+    // Retorna um novo UID
     return max_uid + 1;
 }
 
@@ -79,5 +82,6 @@ int comparar_ordem(const void *a, const void *b) {
     const membro_t *ma = (const membro_t *)a;
     const membro_t *mb = (const membro_t *)b;
 
+    // Compara pelo campo 'ordem'
     return ma->ordem - mb->ordem;
 }

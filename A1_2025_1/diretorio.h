@@ -7,7 +7,7 @@
 
 
 typedef struct {
-    char nome[256];         // nome do membro (sem espaços)
+    char nome[1024];         // nome do membro
     __uid_t uid;            // identificador único
     size_t tamanho_orig;    // tamanho original
     size_t tamanho_disco;   // tamanho após compressão (ou igual se não comprimido)
