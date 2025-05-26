@@ -8,6 +8,7 @@
 
 
 #define EXTENSAO ".vc"
+#define MAX_SIZE ((size_t)-1)
 
 int termina_com(const char *str, const char *sufixo) {
     size_t len_str = strlen(str);
@@ -16,21 +17,10 @@ int termina_com(const char *str, const char *sufixo) {
     return strcmp(str + len_str - len_sufixo, sufixo) == 0;
 }
 
-void listar_membros(membro_t *m, int qtd) {
-    printf("%-20s %-5s %-10s %-10s %-20s %-6s %-8s\n",
-        "Nome", "UID", "TamOrig", "TamDisco", "DataMod", "Ordem", "Offset");
-    for (int i = 0; i < qtd; i++) {
-        char data[64];
-        strftime(data, sizeof(data), "%d/%m/%Y %H:%M:%S", localtime(&m[i].data_mod));
-        printf("%-20s %-5d %-10zu %-10zu %-20s %-6d %-8ld\n",
-            m[i].nome, m[i].uid, m[i].tamanho_orig,
-            m[i].tamanho_disco, data, m[i].ordem, m[i].offset);
-    }
-}
 
 int main(int argc, char *argv[]) {
     if (argc < 3) {
-        fprintf(stderr, "Uso: %s <opcao> <archive> [membros...]\n", argv[0]);
+        fprintf(stderr, "Uso: %s <opcao> <archive> [membros...]\nDigite %s -help <archive> para ver ajuda\n", argv[0], argv[0]);
         return 1;
     }
 
@@ -115,15 +105,69 @@ int main(int argc, char *argv[]) {
         listar_membros(membros, qtd);
     }
 
+    // Modo -t (Inspecionar Membro)
     else if (strcmp(opcao, "-t") == 0) {
         for (int i = 0; i < qtd; i++) {
             inspecionar_membro(arq, &membros[i]);
       }
     }
 
+    // Modo -ss (ordenar por tamanho)
+    else if (strcmp(opcao, "-ss") == 0) {
+        if (ordenar_membros_por_tamanho(arq, membros, qtd) == 0) {
+        printf("Membros ordenados por tamanho.\n");
+        listar_membros(membros, qtd);
+        } else {
+        fprintf(stderr, "Erro ao ordenar por tamanho.\n");
+        }
+}
+
+    // Modo -sn (ordenar por nome)
+    else if (strcmp(opcao, "-sn") == 0) {
+        if (ordenar_membros_por_nome(arq, membros, qtd) == 0) {
+        printf("Membros ordenados por nome.\n");
+        listar_membros(membros, qtd);
+        } else {
+        fprintf(stderr, "Erro ao ordenar por nome.\n");
+        }
+    }
+    // Modo -v (Verificar integridade)
+    else if (strcmp(opcao, "-v") == 0) {
+        verificar_integridade(arq, membros, qtd);
+    }
+
+    // -cbt <valor> lista membros com tamanho >= valor
+    else if (strcmp(opcao, "-cbt") == 0) {
+        if (argc != 4) {
+            fprintf(stderr, "Uso: %s -cbt <archive> <tamanho_min>\n", argv[0]);
+            return 1;
+        }
+        size_t tamanho_min = (size_t) atol(argv[3]);
+        listar_membros_filtrados(membros, qtd, tamanho_min, MAX_SIZE);
+        fclose(arq);
+        free(membros);
+        return 0;
+    }
+    // -cst <valor> lista membros com tamanho <= valor
+    else if (strcmp(opcao, "-cst") == 0) {
+        if (argc != 4) {
+            fprintf(stderr, "Uso: %s -cst <archive> <tamanho_max>\n", argv[0]);
+            return 1;
+        }
+        size_t tamanho_max = (size_t) atol(argv[3]);
+        listar_membros_filtrados(membros, qtd, 0, tamanho_max);
+        fclose(arq);
+        free(membros);
+        return 0;
+    }
+
+    else if (strcmp(argv[1], "-help") == 0) {
+        imprimir_ajuda(argv[0]);
+        return 0;
+    }
 
     else {
-        fprintf(stderr, "Opção inválida: %s\n", opcao);
+        fprintf(stderr, "Opção inválida: %s\nDigite %s -help <archive> para ver ajuda\n", opcao, argv[0]);
     }
 
     free(membros);

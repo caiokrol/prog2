@@ -455,3 +455,196 @@ int inspecionar_membro(FILE *archive, membro_t *m) {
     return 0;
 }
 
+// Função de comparação para qsort — ordena por tamanho crescente
+int comparar_por_tamanho(const void *a, const void *b) {
+    const membro_t *m1 = (const membro_t *)a;
+    const membro_t *m2 = (const membro_t *)b;
+    return (m1->tamanho_disco - m2->tamanho_disco);
+}
+
+// Função para ordenar os membros por tamanho
+int ordenar_membros_por_tamanho(FILE *archive, membro_t *membros, int qtd) {
+    if (!archive || !membros || qtd <= 1)
+        return -1;
+
+    // Ordenar vetor na RAM
+    qsort(membros, qtd, sizeof(membro_t), comparar_por_tamanho);
+
+    // Calcular espaço total dos dados
+    long total_dados = 0;
+    for (int i = 0; i < qtd; i++) {
+        total_dados += membros[i].tamanho_disco;
+    }
+
+    // Alocar buffer para os dados
+    unsigned char *buffer = malloc(total_dados);
+    if (!buffer) {
+        fprintf(stderr, "Erro de memória.\n");
+        return -1;
+    }
+
+    // Ler os dados dos membros (na ordem antiga)
+    long pos_buffer = 0;
+    for (int i = 0; i < qtd; i++) {
+        fseek(archive, membros[i].offset, SEEK_SET);
+        size_t lidos = fread(buffer + pos_buffer, 1, membros[i].tamanho_disco, archive);
+        if (lidos != (size_t)membros[i].tamanho_disco) {
+            fprintf(stderr, "Erro ao ler dados do membro %s\n", membros[i].nome);
+            free(buffer);
+            return -1;
+        }
+        pos_buffer += membros[i].tamanho_disco;
+    }
+
+    // Atualizar offsets e ordem
+    long offset_inicial = sizeof(int) + qtd * sizeof(membro_t);
+    pos_buffer = 0;
+    for (int i = 0; i < qtd; i++) {
+        membros[i].offset = offset_inicial + pos_buffer;
+        membros[i].ordem = i;
+        pos_buffer += membros[i].tamanho_disco;
+    }
+
+    // Gravar diretório atualizado
+    rewind(archive);
+    if (salvar_diretorio(archive, membros, qtd) != 0) {
+        fprintf(stderr, "Erro ao salvar diretório.\n");
+        free(buffer);
+        return -1;
+    }
+
+    // Gravar os dados reorganizados
+    pos_buffer = 0;
+    for (int i = 0; i < qtd; i++) {
+        fseek(archive, membros[i].offset, SEEK_SET);
+        size_t escritos = fwrite(buffer + pos_buffer, 1, membros[i].tamanho_disco, archive);
+        if (escritos != (size_t)membros[i].tamanho_disco) {
+            fprintf(stderr, "Erro ao escrever dados do membro %s\n", membros[i].nome);
+            free(buffer);
+            return -1;
+        }
+        pos_buffer += membros[i].tamanho_disco;
+    }
+
+    free(buffer);
+    return 0;
+}
+
+// Função de comparação para qsort — ordena por ordem alfabetica
+int comparar_por_nome(const void *a, const void *b) {
+    const membro_t *m1 = (const membro_t *)a;
+    const membro_t *m2 = (const membro_t *)b;
+    return strcmp(m1->nome, m2->nome);
+}
+
+// Função para ordenar os membros por ordem alfabetica
+int ordenar_membros_por_nome(FILE *archive, membro_t *membros, int qtd) {
+    if (!archive || !membros || qtd <= 1)
+        return -1;
+
+    // Ordena alfabeticamente pelo nome
+    qsort(membros, qtd, sizeof(membro_t), comparar_por_nome);
+
+    // Calcula o espaço total necessário
+    long dados_totais = 0;
+    for (int i = 0; i < qtd; i++) {
+        dados_totais += membros[i].tamanho_disco;
+    }
+
+    // Cria buffer para armazenar todos os dados
+    unsigned char *buffer = malloc(dados_totais);
+    if (!buffer) {
+        fprintf(stderr, "Erro de memória.\n");
+        return -1;
+    }
+
+    // Lê os dados na ordem atual
+    long pos_buffer = 0;
+    for (int i = 0; i < qtd; i++) {
+        fseek(archive, membros[i].offset, SEEK_SET);
+        size_t lidos = fread(buffer + pos_buffer, 1, membros[i].tamanho_disco, archive);
+        if (lidos != (size_t)membros[i].tamanho_disco) {
+            fprintf(stderr, "Erro ao ler dados do membro %s\n", membros[i].nome);
+            free(buffer);
+            return -1;
+        }
+        pos_buffer += membros[i].tamanho_disco;
+    }
+
+    // Atualiza offsets e ordem com base na nova sequência
+    pos_buffer = 0;
+    for (int i = 0; i < qtd; i++) {
+        membros[i].offset = sizeof(int) + qtd * sizeof(membro_t) + pos_buffer;
+        membros[i].ordem = i;
+        pos_buffer += membros[i].tamanho_disco;
+    }
+
+    // Regrava o diretório
+    rewind(archive);
+    if (salvar_diretorio(archive, membros, qtd) != 0) {
+        free(buffer);
+        return -1;
+    }
+
+    // Grava os dados reorganizados
+    pos_buffer = 0;
+    for (int i = 0; i < qtd; i++) {
+        fseek(archive, membros[i].offset, SEEK_SET);
+        fwrite(buffer + pos_buffer, 1, membros[i].tamanho_disco, archive);
+        pos_buffer += membros[i].tamanho_disco;
+    }
+
+    free(buffer);
+    return 0;
+}
+
+// Retorna o tamanho do arquivo
+long tamanho_arquivo(FILE *f) {
+    long pos_atual = ftell(f);
+    fseek(f, 0, SEEK_END);
+    long tamanho = ftell(f);
+    fseek(f, pos_atual, SEEK_SET);
+    return tamanho;
+}
+// Funcao para verificar a integridade dos arquivos
+int verificar_integridade(FILE *arquivo, membro_t *membros, int qtd) {
+    if (!arquivo || !membros || qtd <= 0) return -1;
+
+    long tamanho_total = tamanho_arquivo(arquivo);
+    int erros = 0;
+
+    for (int i = 0; i < qtd; i++) {
+        long fim_dado = membros[i].offset + membros[i].tamanho_disco;
+        if (membros[i].offset < 0 || fim_dado > tamanho_total) {
+            printf("Erro: membro '%s' com offset/tamanho inválidos (offset: %ld, tamanho: %zu, arquivo: %ld)\n",
+                   membros[i].nome, membros[i].offset, membros[i].tamanho_disco, tamanho_total);
+            erros++;
+            continue;
+        }
+
+        // Testar leitura
+        unsigned char *buffer = malloc(membros[i].tamanho_disco);
+        if (!buffer) {
+            fprintf(stderr, "Erro de memória ao verificar membro '%s'\n", membros[i].nome);
+            return -1;
+        }
+
+        fseek(arquivo, membros[i].offset, SEEK_SET);
+        size_t lidos = fread(buffer, 1, membros[i].tamanho_disco, arquivo);
+        free(buffer);
+
+        if (lidos != membros[i].tamanho_disco) {
+            printf("Erro: leitura incompleta para membro '%s' (esperado: %zu, lido: %zu)\n",
+                   membros[i].nome, membros[i].tamanho_disco, lidos);
+            erros++;
+        }
+    }
+
+    if (erros == 0) {
+        printf("Arquivo íntegro: todos os membros com offsets e tamanhos válidos.\n");
+    } else {
+        printf("Foram encontrados %d erro(s) de integridade.\n", erros);
+    }
+
+    return erros;
+}

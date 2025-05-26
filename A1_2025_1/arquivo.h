@@ -45,4 +45,22 @@ int mover_membro(FILE *archive, membro_t *membros, int qtd, const char *orig, co
  */
 int inspecionar_membro(FILE *archive, membro_t *m);
 
+// Função de comparação para qsort — ordena por tamanho crescente
+int comparar_por_tamanho(const void *a, const void *b);
+
+// Função para ordenar os membros por tamanho
+int ordenar_membros_por_tamanho(FILE *archive, membro_t *membros, int qtd);
+
+// Função de comparação para qsort — ordena por ordem alfabetica
+int comparar_por_nome(const void *a, const void *b);
+
+// Função para ordenar os membros por ordem alfabetica
+int ordenar_membros_por_nome(FILE *archive, membro_t *membros, int qtd);
+
+// Retorna o tamanho do arquivo
+long tamanho_arquivo(FILE *f);
+
+// Funcao para verificar a integridade dos arquivos
+int verificar_integridade(FILE *arquivo, membro_t *membros, int qtd);
+
 #endif

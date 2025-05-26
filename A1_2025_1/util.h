@@ -18,4 +18,10 @@ time_t obter_data_mod(const char *path);
  */
 void printar_info(const membro_t *m);
 
+void listar_membros(membro_t *m, int qtd);
+
+void imprimir_ajuda(const char *nome_prog);
+
+void listar_membros_filtrados(membro_t *m, int qtd, size_t tamanho_min, size_t tamanho_max);
+
 #endif
