@@ -15,7 +15,6 @@
 - **util.c / util.h**: Funções auxiliares, como geração de UID e obtenção da data de modificação de arquivos.
 - **lz.c / lz.h**: Implementação dos algoritmos de compressão e descompressão utilizando o algoritmo LZ (Terceiros).
 - **makefile**: Script de compilação que define regras para compilar o projeto, limpar arquivos intermediários e reconstruir o executável.
-- **.gitignore**: Lista de arquivos e diretórios a serem ignorados pelo sistema de controle de versão Git.
 
 ---
 
@@ -71,4 +70,4 @@ A principal dificuldade enfrentada foi a manipulação da realocação dos dados
 
 ## Bugs Conhecidos
 
-Atualmente, não há bugs conhecidos. Todas as funcionalidades foram testadas e estão operando conforme o esperado. No entanto, uma possível melhoria futura seria a implementação de uma reorganização dos arquivos depois de excluir um arquivo do .vc.
+**FIXED IN 05/26/2025 UPDATE** Atualmente, não há bugs conhecidos. Todas as funcionalidades foram testadas e estão operando conforme o esperado. No entanto, uma possível melhoria futura seria a implementação de uma reorganização dos arquivos depois de excluir um arquivo do .vc.

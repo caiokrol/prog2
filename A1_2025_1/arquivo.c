@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <unistd.h>
 #include "arquivo.h"
 #include "util.h"
 #include "lz.h"
@@ -59,9 +60,23 @@ int inserir_membro(FILE *archive, membro_t **membros, int *qtd, int *cap, const 
 
     // Verifica se o membro já existe
     int pos = buscar_membro(*membros, *qtd, nome_arquivo);
+
+        // Abre arquivo original
+    FILE *entrada = fopen(caminho, "rb");
+    if (!entrada) return -1;
+
+    fseek(entrada, 0, SEEK_END);
+    size_t tamanho = ftell(entrada);
+    rewind(entrada);
+    if (!(tamanho > 0)) {
+        fclose(entrada);
+        return -1;
+    }
+    
     if (pos >= 0) {
-        // Marca membro antigo como inválido
-        (*membros)[pos].offset = -1;
+            remover_membro(archive, *membros, qtd, nome_arquivo);
+            printf("passou remover membro\n");
+            pos = (*qtd)++;
     } else {
         // Realoca vetor se necessário
         if (*qtd >= *cap) {
@@ -74,6 +89,8 @@ int inserir_membro(FILE *archive, membro_t **membros, int *qtd, int *cap, const 
         pos = (*qtd)++;
     }
 
+
+    printf("Chegou aqui\n");
     // Inicializa novo membro
     membro_t *m = &(*membros)[pos];
     memset(m, 0, sizeof(membro_t));
@@ -82,17 +99,9 @@ int inserir_membro(FILE *archive, membro_t **membros, int *qtd, int *cap, const 
     m->data_mod = obter_data_mod(caminho);
     m->ordem = pos;
 
-    // Abre arquivo original
-    FILE *entrada = fopen(caminho, "rb");
-    if (!entrada) return -1;
 
-    fseek(entrada, 0, SEEK_END);
-    long tamanho = ftell(entrada);
-    rewind(entrada);
-    if (tamanho < 0) {
-        fclose(entrada);
-        return -1;
-    }
+
+
 
     // Lê conteúdo do arquivo
     unsigned char *buffer_in = malloc(tamanho);
@@ -120,9 +129,9 @@ int inserir_membro(FILE *archive, membro_t **membros, int *qtd, int *cap, const 
 
     // Aplica compressão se solicitada e vantajosa
     int usar_compressao = 0;
-    int tamanho_final = tamanho;
+    size_t tamanho_final = tamanho;
     if (compressao) {
-        int comprimido = LZ_Compress(buffer_in, buffer_out, tamanho);
+        size_t comprimido = LZ_Compress(buffer_in, buffer_out, tamanho);
         if (comprimido > 0 && comprimido < tamanho) {
             tamanho_final = comprimido;
             usar_compressao = 1;
@@ -236,70 +245,174 @@ int extrair_membro(FILE *archive, membro_t *membro) {
 }
 
 int remover_membro(FILE *archive, membro_t *membros, int *qtd, const char *nome) {
-    if (!archive || !membros || !qtd || !nome || *qtd <= 0)
+    if (!archive || !membros || !qtd || *qtd <= 0 || !nome)
         return -1;
 
-    // Encontra o índice do membro no diretório
+    // Localiza o membro
     int idx = buscar_membro(membros, *qtd, nome);
     if (idx < 0) {
         return -1;  // Membro não encontrado
     }
 
-    // Desloca os membros seguintes para "remover" o membro encontrado
+    long tamanho_removido = membros[idx].tamanho_disco;
+    long offset_removido = membros[idx].offset;
+    int ordem_removida = membros[idx].ordem;
+
+    // Calcula o tamanho atual do diretório
+    long tam_dir_atual = sizeof(int) + (*qtd) * sizeof(membro_t);
+
+    // Pega tamanho atual do arquivo
+    fseek(archive, 0, SEEK_END);
+    long fim_arquivo = ftell(archive);
+    if (fim_arquivo < 0) {
+        perror("ftell");
+        return -1;
+    }
+
+    // Verifica se há dados após o membro removido
+    long bytes_apos = (offset_removido + tamanho_removido < fim_arquivo)
+                       ? (fim_arquivo - (offset_removido + tamanho_removido))
+                       : 0;
+
+    // Move dados seguintes (se houver)
+    if (bytes_apos > 0) {
+        move(archive,
+             offset_removido + tamanho_removido,
+             bytes_apos,
+             offset_removido);
+    }
+
+    // Atualiza offsets dos membros após o removido
+    for (int i = 0; i < *qtd; i++) {
+        if (membros[i].offset > offset_removido) {
+            membros[i].offset -= tamanho_removido;
+        }
+    }
+
+        // Atualiza ordem dos membros
+    for (int i = 0; i < *qtd; i++) {
+        if (membros[i].ordem > ordem_removida) {
+            membros[i].ordem--;
+        }
+    }
+
+    // Remove membro do vetor (desloca elementos)
     memmove(&membros[idx],
             &membros[idx + 1],
             sizeof(membro_t) * ((*qtd - 1) - idx));
-
-    // Decrementa a quantidade de membros
     (*qtd)--;
 
-    // Regrava o diretório atualizado no início do arquivo
-    rewind(archive);
-    if (salvar_diretorio(archive, membros, *qtd) != 0)
+    // Calcula novo tamanho do diretório
+    long tam_dir_novo = sizeof(int) + (*qtd) * sizeof(membro_t);
+    long delta_dir = tam_dir_novo - tam_dir_atual;
+
+    // Se o diretório diminuiu, move os dados dos membros para cima
+    if (delta_dir < 0 && *qtd > 0) {
+        long deslocamento = -delta_dir;
+        for (int i = 0; i < *qtd; i++) {
+            move(archive,
+                 membros[i].offset,
+                 membros[i].tamanho_disco,
+                 membros[i].offset - deslocamento);
+            membros[i].offset -= deslocamento;
+        }
+    }
+
+    // Trunca o arquivo
+    long novo_tamanho = fim_arquivo - tamanho_removido;
+    if (delta_dir < 0) {
+        novo_tamanho -= -delta_dir;
+    }
+
+    if (ftruncate(fileno(archive), novo_tamanho) != 0) {
+        perror("ftruncate");
         return -1;
+    }
+
+    // Salva diretório atualizado
+    rewind(archive);
+    if (salvar_diretorio(archive, membros, *qtd) != 0) {
+        fprintf(stderr, "Erro ao salvar diretório após remoção\n");
+        return -1;
+    }
 
     return 0;
 }
 
 int mover_membro(FILE *archive, membro_t *membros, int qtd, const char *orig, const char *dest) {
-    if (!archive || !membros || qtd <= 0 || !orig || !dest)
+    if (!archive || !membros || qtd <= 1 || !orig || !dest)
         return -1;
 
-    // Localiza os membros de origem e destino
     int idx_o = buscar_membro(membros, qtd, orig);
     int idx_d = buscar_membro(membros, qtd, dest);
-    if (idx_o < 0 || idx_d < 0)
+    if (idx_o < 0 || idx_d < 0 || idx_o == idx_d)
         return -1;
 
-    // Salva uma cópia temporária do membro a ser movido
-    membro_t temp = membros[idx_o];
-
-    // Remove o membro de origem do vetor
-    memmove(&membros[idx_o],
-            &membros[idx_o + 1],
-            sizeof(membro_t) * (qtd - idx_o - 1));
-
-    // Ajusta o índice de inserção caso o destino esteja após a origem
-    if (idx_d > idx_o) 
-        idx_d--;
-
-    // Insere o membro temporário após o destino
-    int insert_pos = idx_d + 1;
-    memmove(&membros[insert_pos + 1],
-            &membros[insert_pos],
-            sizeof(membro_t) * (qtd - insert_pos - 1));
-    membros[insert_pos] = temp;
-
-    // Atualiza a ordem dos membros no vetor
-    for (int i = 0; i < qtd; i++) {
-        membros[i].ordem = i;
+    if ((idx_o == idx_d) || (idx_o == idx_d + 1)) {
+        printf("O objeto já está na posição correta\n");
+        return -1; // Já está na posição certa
     }
 
-    // Regrava o diretório atualizado no início do arquivo
-    rewind(archive);
-    if (salvar_diretorio(archive, membros, qtd) != 0)
-        return -1;
+    // Salvar membro a ser movido
+    membro_t temp = membros[idx_o];
 
+    // Remoção e inserção na nova posição
+    if (idx_o < idx_d) {
+        memmove(&membros[idx_o],
+                &membros[idx_o + 1],
+                sizeof(membro_t) * (idx_d - idx_o));
+        membros[idx_d] = temp;
+    } else {
+        memmove(&membros[idx_d + 1],
+                &membros[idx_d],
+                sizeof(membro_t) * (idx_o - idx_d));
+        membros[idx_d] = temp;
+    }
+
+    // Calcular espaço total necessário
+    long dados_totais = 0;
+    for (int i = 0; i < qtd; i++) {
+        dados_totais += membros[i].tamanho_disco;
+    }
+
+    // Buffer pra segurar todos os dados
+    unsigned char *buffer = malloc(dados_totais);
+    if (!buffer) {
+        fprintf(stderr, "Erro de memória.\n");
+        return -1;
+    }
+
+    // Lê os dados de cada membro, na nova ordem
+    long pos_buffer = 0;
+    for (int i = 0; i < qtd; i++) {
+        fseek(archive, membros[i].offset, SEEK_SET);
+        size_t lidos = fread(buffer + pos_buffer, 1, membros[i].tamanho_disco, archive);
+        if (lidos != (size_t)membros[i].tamanho_disco) {
+            fprintf(stderr, "Erro ao ler dados do membro %s\n", membros[i].nome);
+            free(buffer);
+            return -1;
+        }
+        membros[i].offset = sizeof(int) + qtd * sizeof(membro_t) + pos_buffer;
+        membros[i].ordem = i;
+        pos_buffer += membros[i].tamanho_disco;
+    }
+
+    // Regrava diretório
+    rewind(archive);
+    if (salvar_diretorio(archive, membros, qtd) != 0) {
+        free(buffer);
+        return -1;
+    }
+
+    // Grava dados reorganizados
+    pos_buffer = 0;
+    for (int i = 0; i < qtd; i++) {
+        fseek(archive, membros[i].offset, SEEK_SET);
+        fwrite(buffer + pos_buffer, 1, membros[i].tamanho_disco, archive);
+        pos_buffer += membros[i].tamanho_disco;
+    }
+
+    free(buffer);
     return 0;
 }
 
