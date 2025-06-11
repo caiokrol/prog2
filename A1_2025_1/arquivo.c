@@ -75,7 +75,6 @@ int inserir_membro(FILE *archive, membro_t **membros, int *qtd, int *cap, const 
     
     if (pos >= 0) {
             remover_membro(archive, *membros, qtd, nome_arquivo);
-            printf("passou remover membro\n");
             pos = (*qtd)++;
     } else {
         // Realoca vetor se necessário
@@ -89,8 +88,6 @@ int inserir_membro(FILE *archive, membro_t **membros, int *qtd, int *cap, const 
         pos = (*qtd)++;
     }
 
-
-    printf("Chegou aqui\n");
     // Inicializa novo membro
     membro_t *m = &(*membros)[pos];
     memset(m, 0, sizeof(membro_t));
