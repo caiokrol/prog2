@@ -64,87 +64,38 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     float escala_personagens = 3.0;
 
     ALLEGRO_BITMAP *background = al_load_bitmap("background.png");
-    if (!background) {
-        al_show_native_message_box(janela, "Erro", "Imagem", "Erro ao carregar background.png", NULL, 0);
-        return;
-    }
-
     ALLEGRO_BITMAP *sprite_parado = al_load_bitmap("personagem.png");
-    if (!sprite_parado) {
-        al_show_native_message_box(janela, "Erro", "Imagem", "Erro ao carregar personagem.png", NULL, 0);
-        al_destroy_bitmap(background);
-        return;
-    }
-
     ALLEGRO_BITMAP *sprite_andando = al_load_bitmap("personagem_andando.png");
-    if (!sprite_andando) {
-        al_show_native_message_box(janela, "Erro", "Imagem", "Erro ao carregar personagem_andando.png", NULL, 0);
-        al_destroy_bitmap(background);
-        al_destroy_bitmap(sprite_parado);
-        return;
-    }
-
     ALLEGRO_BITMAP *sprite_correndo = al_load_bitmap("personagem_correndo.png");
-    if (!sprite_correndo) {
-        al_show_native_message_box(janela, "Erro", "Imagem", "Erro ao carregar personagem_correndo.png", NULL, 0);
-        al_destroy_bitmap(background);
-        al_destroy_bitmap(sprite_parado);
-        al_destroy_bitmap(sprite_andando);
-        return;
-    }
-
     ALLEGRO_BITMAP *sprite_pulando = al_load_bitmap("personagem_pulando.png");
-    if (!sprite_pulando) {
-        al_show_native_message_box(janela, "Erro", "Imagem", "Erro ao carregar personagem_pulando.png", NULL, 0);
-        al_destroy_bitmap(background);
-        al_destroy_bitmap(sprite_parado);
-        al_destroy_bitmap(sprite_andando);
-        al_destroy_bitmap(sprite_correndo);
-        return;
-    }
+    ALLEGRO_BITMAP *sprite_agachado = al_load_bitmap("personagem_agachado.png");
+
+    if (!background || !sprite_parado || !sprite_andando || !sprite_correndo || !sprite_pulando || !sprite_agachado) return;
 
     int bg_width = al_get_bitmap_width(background);
     int bg_height = al_get_bitmap_height(background);
 
-    // Frames do sprite parado
-    int frame_total_parado = 6;
-    int frame_largura_parado = 768 / frame_total_parado; // 128
-    int frame_altura_parado = 128;
-    int frame_atual_parado = 0;
-    float tempo_por_frame_parado = 1.0 / 5.0;
-    float tempo_acumulado_parado = 0;
+    int frame_total_parado = 6, frame_total_andando = 8, frame_total_correndo = 8, frame_total_pulando = 16, frame_total_agachado = 8;
+    int frame_largura_parado = 768 / frame_total_parado;
+    int frame_largura_andando = 1024 / frame_total_andando;
+    int frame_largura_correndo = 1024 / frame_total_correndo;
+    int frame_largura_pulando = 2048 / frame_total_pulando;
+    int frame_largura_agachado = 1024 / frame_total_agachado;
+    int frame_altura = 128;
 
-    // Frames do sprite andando
-    int frame_total_andando = 8;
-    int frame_largura_andando = 1024 / frame_total_andando; // 128
-    int frame_altura_andando = 128;
-    int frame_atual_andando = 0;
-    float tempo_por_frame_andando = 1.0 / 10.0;
-    float tempo_acumulado_andando = 0;
-
-    // Frames do sprite correndo
-    int frame_total_correndo = 8;
-    int frame_largura_correndo = 1024 / frame_total_correndo; // 128
-    int frame_altura_correndo = 128;
-    int frame_atual_correndo = 0;
-    float tempo_por_frame_correndo = 1.0 / 10.0;
-    float tempo_acumulado_correndo = 0;
-
-    // Frames do sprite pulando
-    int frame_total_pulando = 16;
-    int frame_largura_pulando = 2048 / frame_total_pulando; // 128
-    int frame_altura_pulando = 128;
-    int frame_atual_pulando = 0;
-    float tempo_por_frame_pulando = 1.0 / 20.0;
-    float tempo_acumulado_pulando = 0;
+    int frame_parado = 0, frame_andando = 0, frame_correndo = 0, frame_pulando = 0, frame_agachado = 0;
+    float tpf_parado = 1.0 / 5.0, tpf_andando = 1.0 / 10.0, tpf_correndo = 1.0 / 10.0, tpf_pulando = 1.0 / 12, tpf_agachado = 1.0 / 8.0;
+    float acc_parado = 0, acc_andando = 0, acc_correndo = 0, acc_pulando = 0, acc_agachado = 0;
 
     float personagem_x = LARGURA / 2.0 - (frame_largura_correndo * escala_personagens) / 2.0;
-    float personagem_y_base = (ALTURA - 300) - (frame_altura_correndo * escala_personagens) / 2.0;
+    float personagem_y_base = (ALTURA - 300) - (frame_altura * escala_personagens) / 2.0;
     float personagem_y = personagem_y_base;
 
     bool pulando = false;
+    bool agachando = false; // Removida a variável 'agachando_iniciado'
     float vel_y = 0.0;
     float gravidade = 0.5;
+    float vel_x_pulo = 0.0;
 
     ALLEGRO_TIMER *timer = al_create_timer(1.0 / 60.0);
     al_start_timer(timer);
@@ -159,105 +110,106 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
         ALLEGRO_EVENT ev;
         al_wait_for_event(fila, &ev);
 
-        if (ev.type == ALLEGRO_EVENT_DISPLAY_CLOSE) {
-            jogando = false;
-        } else if (ev.type == ALLEGRO_EVENT_KEY_DOWN) {
-            if (ev.keyboard.keycode == ALLEGRO_KEY_ESCAPE) {
-                jogando = false;
-            } else if (ev.keyboard.keycode == ALLEGRO_KEY_UP && !pulando) {
+        if (ev.type == ALLEGRO_EVENT_DISPLAY_CLOSE) jogando = false;
+        else if (ev.type == ALLEGRO_EVENT_KEY_DOWN) {
+            if (ev.keyboard.keycode == ALLEGRO_KEY_ESCAPE) jogando = false;
+            else if (ev.keyboard.keycode == ALLEGRO_KEY_UP && !pulando && !agachando) {
                 pulando = true;
-                vel_y = -10.0;  // impulso do pulo
-                frame_atual_pulando = 0;
-                tempo_acumulado_pulando = 0;
+                vel_y = -10.0;
+                vel_x_pulo = 0.0;
+                frame_pulando = 0;
+                acc_pulando = 0;
+
+                ALLEGRO_KEYBOARD_STATE estado;
+                al_get_keyboard_state(&estado);
+                if (al_key_down(&estado, ALLEGRO_KEY_RIGHT)) vel_x_pulo = velocidade;
+                else if (al_key_down(&estado, ALLEGRO_KEY_LEFT)) vel_x_pulo = -velocidade;
             }
-        } else if (ev.type == ALLEGRO_EVENT_TIMER) {
+            // Agachar: só ativa se não estiver pulando E não estiver já agachando
+            else if (ev.keyboard.keycode == ALLEGRO_KEY_DOWN && !pulando && !agachando) {
+                agachando = true;
+                frame_agachado = 0;     // Zera o frame para iniciar a animação
+                acc_agachado = 0;       // Zera o acumulador de tempo
+            }
+        }
+        // Não precisamos de KEY_UP para agachar aqui, a transição será baseada na animação
+        
+        else if (ev.type == ALLEGRO_EVENT_TIMER) {
             ALLEGRO_KEYBOARD_STATE estado;
             al_get_keyboard_state(&estado);
+            bool andando = false, correndo = false;
 
-            bool andando = false;
-            bool correndo = false;
+            // Movimento horizontal (independente do agachamento)
+            velocidade = (al_key_down(&estado, ALLEGRO_KEY_LSHIFT) || al_key_down(&estado, ALLEGRO_KEY_RSHIFT)) ? velocidade_correr : velocidade_andar;
+            if (al_key_down(&estado, ALLEGRO_KEY_RIGHT)) {
+                deslocamento_x += velocidade;
+                if (deslocamento_x >= bg_width) deslocamento_x -= bg_width;
+                andando = true;
+                if (velocidade == velocidade_correr) correndo = true;
+            }
+            if (al_key_down(&estado, ALLEGRO_KEY_LEFT)) {
+                deslocamento_x -= velocidade;
+                if (deslocamento_x < 0) deslocamento_x += bg_width;
+                andando = true;
+                if (velocidade == velocidade_correr) correndo = true;
+            }
 
             if (pulando) {
-                // Atualiza posição vertical com gravidade
                 personagem_y += vel_y;
                 vel_y += gravidade;
-
+                if (deslocamento_x >= bg_width) deslocamento_x -= bg_width;
+                if (deslocamento_x < 0) deslocamento_x += bg_width;
                 if (personagem_y >= personagem_y_base) {
                     personagem_y = personagem_y_base;
                     pulando = false;
                     vel_y = 0;
+                    vel_x_pulo = 0;
                 }
-
-                tempo_acumulado_pulando += 1.0 / 60.0;
-                if (tempo_acumulado_pulando >= tempo_por_frame_pulando) {
-                    tempo_acumulado_pulando -= tempo_por_frame_pulando;
-                    frame_atual_pulando = (frame_atual_pulando + 1) % frame_total_pulando;
+                acc_pulando += 1.0 / 60.0;
+                if (acc_pulando >= tpf_pulando) {
+                    acc_pulando -= tpf_pulando;
+                    if (frame_pulando < frame_total_pulando - 1)
+                        frame_pulando++;
                 }
-            } else {
-                // Verifica velocidade com Shift
-                if (al_key_down(&estado, ALLEGRO_KEY_LSHIFT) || al_key_down(&estado, ALLEGRO_KEY_RSHIFT)) {
-                    velocidade = velocidade_correr;
-                } else {
-                    velocidade = velocidade_andar;
-                }
-
-                if (al_key_down(&estado, ALLEGRO_KEY_RIGHT)) {
-                    deslocamento_x += velocidade;
-                    if (deslocamento_x >= bg_width) {
-                        deslocamento_x -= bg_width;
-                    }
-                    andando = true;
-                    if (velocidade == velocidade_correr) {
-                        correndo = true;
+            } else if (agachando) {
+                acc_agachado += 1.0 / 60.0;
+                if (acc_agachado >= tpf_agachado) {
+                    acc_agachado -= tpf_agachado;
+                    if (frame_agachado < frame_total_agachado - 1) { // Se ainda não chegou no último frame
+                        frame_agachado++;
+                    } else { // Chegou no último frame, animação de agachar terminou
+                        agachando = false; // Personagem não está mais "agachando" (animação terminou)
                     }
                 }
-                if (al_key_down(&estado, ALLEGRO_KEY_LEFT)) {
-                    deslocamento_x -= velocidade;
-                    if (deslocamento_x < 0) {
-                        deslocamento_x += bg_width;
-                    }
-                    andando = true;
-                    if (velocidade == velocidade_correr) {
-                        correndo = true;
-                    }
-                }
-
-                // Atualiza animações dependendo do estado
+                // Resetar outras animações para não avançarem durante o agachamento
+                frame_parado = 0; acc_parado = 0;
+                frame_andando = 0; acc_andando = 0;
+                frame_correndo = 0; acc_correndo = 0;
+            }
+            else { // Lógica para estado Parado, Andando ou Correndo
                 if (andando) {
                     if (correndo) {
-                        tempo_acumulado_correndo += 1.0 / 60.0;
-                        if (tempo_acumulado_correndo >= tempo_por_frame_correndo) {
-                            tempo_acumulado_correndo -= tempo_por_frame_correndo;
-                            frame_atual_correndo = (frame_atual_correndo + 1) % frame_total_correndo;
+                        acc_correndo += 1.0 / 60.0;
+                        if (acc_correndo >= tpf_correndo) {
+                            acc_correndo -= tpf_correndo;
+                            frame_correndo = (frame_correndo + 1) % frame_total_correndo;
                         }
-                        // Resetar outros
-                        frame_atual_andando = 0;
-                        tempo_acumulado_andando = 0;
-                        frame_atual_parado = 0;
-                        tempo_acumulado_parado = 0;
+                        frame_andando = 0; acc_andando = 0; frame_parado = 0; acc_parado = 0;
                     } else {
-                        tempo_acumulado_andando += 1.0 / 60.0;
-                        if (tempo_acumulado_andando >= tempo_por_frame_andando) {
-                            tempo_acumulado_andando -= tempo_por_frame_andando;
-                            frame_atual_andando = (frame_atual_andando + 1) % frame_total_andando;
+                        acc_andando += 1.0 / 60.0;
+                        if (acc_andando >= tpf_andando) {
+                            acc_andando -= tpf_andando;
+                            frame_andando = (frame_andando + 1) % frame_total_andando;
                         }
-                        // Resetar outros
-                        frame_atual_correndo = 0;
-                        tempo_acumulado_correndo = 0;
-                        frame_atual_parado = 0;
-                        tempo_acumulado_parado = 0;
+                        frame_correndo = 0; acc_correndo = 0; frame_parado = 0; acc_parado = 0;
                     }
                 } else {
-                    tempo_acumulado_parado += 1.0 / 60.0;
-                    if (tempo_acumulado_parado >= tempo_por_frame_parado) {
-                        tempo_acumulado_parado -= tempo_por_frame_parado;
-                        frame_atual_parado = (frame_atual_parado + 1) % frame_total_parado;
+                    acc_parado += 1.0 / 60.0;
+                    if (acc_parado >= tpf_parado) {
+                        acc_parado -= tpf_parado;
+                        frame_parado = (frame_parado + 1) % frame_total_parado;
                     }
-                    // Resetar outros
-                    frame_atual_correndo = 0;
-                    tempo_acumulado_correndo = 0;
-                    frame_atual_andando = 0;
-                    tempo_acumulado_andando = 0;
+                    frame_correndo = 0; acc_correndo = 0; frame_andando = 0; acc_andando = 0;
                 }
             }
 
@@ -265,63 +217,19 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
 
             int parte1_largura = bg_width - (int)deslocamento_x;
             if (parte1_largura > LARGURA) parte1_largura = LARGURA;
-
             int parte2_largura = LARGURA - parte1_largura;
 
-            al_draw_scaled_bitmap(background,
-                                  (int)deslocamento_x, 0,
-                                  parte1_largura, bg_height,
-                                  0, 0,
-                                  parte1_largura,
-                                  ALTURA,
-                                  0);
+            al_draw_scaled_bitmap(background, (int)deslocamento_x, 0, parte1_largura, bg_height, 0, 0, parte1_largura, ALTURA, 0);
+            if (parte2_largura > 0) al_draw_scaled_bitmap(background, 0, 0, parte2_largura, bg_height, parte1_largura, 0, parte2_largura, ALTURA, 0);
 
-            if (parte2_largura > 0) {
-                al_draw_scaled_bitmap(background,
-                                      0, 0,
-                                      parte2_largura, bg_height,
-                                      parte1_largura, 0,
-                                      parte2_largura,
-                                      ALTURA,
-                                      0);
-            }
-
-            // Desenha o personagem conforme o estado
-            if (pulando) {
-                al_draw_scaled_bitmap(sprite_pulando,
-                                      frame_atual_pulando * frame_largura_pulando, 0,
-                                      frame_largura_pulando, frame_altura_pulando,
-                                      personagem_x, personagem_y,
-                                      frame_largura_pulando * escala_personagens,
-                                      frame_altura_pulando * escala_personagens,
-                                      0);
-            } else if (andando) {
-                if (correndo) {
-                    al_draw_scaled_bitmap(sprite_correndo,
-                                          frame_atual_correndo * frame_largura_correndo, 0,
-                                          frame_largura_correndo, frame_altura_correndo,
-                                          personagem_x, personagem_y,
-                                          frame_largura_correndo * escala_personagens,
-                                          frame_altura_correndo * escala_personagens,
-                                          0);
-                } else {
-                    al_draw_scaled_bitmap(sprite_andando,
-                                          frame_atual_andando * frame_largura_andando, 0,
-                                          frame_largura_andando, frame_altura_andando,
-                                          personagem_x, personagem_y,
-                                          frame_largura_andando * escala_personagens,
-                                          frame_altura_andando * escala_personagens,
-                                          0);
-                }
-            } else {
-                al_draw_scaled_bitmap(sprite_parado,
-                                      frame_atual_parado * frame_largura_parado, 0,
-                                      frame_largura_parado, frame_altura_parado,
-                                      personagem_x, personagem_y,
-                                      frame_largura_parado * escala_personagens,
-                                      frame_altura_parado * escala_personagens,
-                                      0);
-            }
+            if (pulando)
+                al_draw_scaled_bitmap(sprite_pulando, frame_pulando * frame_largura_pulando, 0, frame_largura_pulando, frame_altura, personagem_x, personagem_y, frame_largura_pulando * escala_personagens, frame_altura * escala_personagens, 0);
+            else if (agachando) // Desenha o sprite de agachar APENAS enquanto agachando for true
+                al_draw_scaled_bitmap(sprite_agachado, frame_agachado * frame_largura_agachado, 0, frame_largura_agachado, frame_altura, personagem_x, personagem_y, frame_largura_agachado * escala_personagens, frame_altura * escala_personagens, 0);
+            else if (andando)
+                al_draw_scaled_bitmap(correndo ? sprite_correndo : sprite_andando, (correndo ? frame_correndo : frame_andando) * (correndo ? frame_largura_correndo : frame_largura_andando), 0, (correndo ? frame_largura_correndo : frame_largura_andando), frame_altura, personagem_x, personagem_y, (correndo ? frame_largura_correndo : frame_largura_andando) * escala_personagens, frame_altura * escala_personagens, 0);
+            else
+                al_draw_scaled_bitmap(sprite_parado, frame_parado * frame_largura_parado, 0, frame_largura_parado, frame_altura, personagem_x, personagem_y, frame_largura_parado * escala_personagens, frame_altura * escala_personagens, 0);
 
             al_flip_display();
         }
@@ -332,10 +240,9 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     al_destroy_bitmap(sprite_andando);
     al_destroy_bitmap(sprite_correndo);
     al_destroy_bitmap(sprite_pulando);
+    al_destroy_bitmap(sprite_agachado);
     al_destroy_timer(timer);
 }
-
-
 
 int main() {
     if (!al_init()) {
