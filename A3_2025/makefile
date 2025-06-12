@@ -5,8 +5,8 @@ TARGET = jogo
 SRC = main.c
 
 # Flags do Allegro (usa pkg-config para facilitar)
-CFLAGS = `pkg-config --cflags allegro-5 allegro_font-5 allegro_ttf-5 allegro_image-5 allegro_video-5 allegro_dialog-5 allegro_acodec-5`
-LIBS   = `pkg-config --libs   allegro-5 allegro_font-5 allegro_ttf-5 allegro_image-5 allegro_video-5 allegro_dialog-5 allegro_acodec-5`
+CFLAGS = `pkg-config --cflags allegro-5 allegro_font-5 allegro_ttf-5 allegro_image-5 allegro_video-5 allegro_dialog-5 allegro_acodec-5 allegro_primitives-5`
+LIBS   = `pkg-config --libs   allegro-5 allegro_font-5 allegro_ttf-5 allegro_image-5 allegro_video-5 allegro_dialog-5 allegro_acodec-5 allegro_primitives-5`
 
 # Regra principal
 all:
@@ -15,4 +15,3 @@ all:
 # Limpa os arquivos compilados
 clean:
 	rm -f $(TARGET)
-
