@@ -132,9 +132,6 @@ void desenhar_video_proporcional(ALLEGRO_BITMAP *frame) {
         dh = dw / proporcao_video;
     }
 
-    dx = (LARGURA - dw) / 2;
-    dy = (ALTURA - dh) / 2;
-
     al_draw_scaled_bitmap(frame,
                          0, 0,
                          VIDEO_LARGURA, VIDEO_ALTURA,
@@ -296,7 +293,7 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     // --- End Protagonist Hitbox ---
 
     // --- Protagonist ATTACK Hitbox Properties ---
-    float prot_attack_hitbox_offset_x = 60.0 * escala_personagens; 
+    float prot_attack_hitbox_offset_x = 60.0 * escala_personagens;
     float prot_attack_hitbox_offset_y = 50.0 * escala_personagens;
     float prot_attack_hitbox_width = 50 * escala_personagens;
     float prot_attack_hitbox_height = 80.0 * escala_personagens;
@@ -335,7 +332,7 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     // For a "pass-through-crouching" obstacle, its hitbox height should be above the crouch height
     // and its Y position should align its bottom with the ground.
     // Assuming the main ground level is 'personagem_y_base + (frame_altura * escala_personagens)'
-    float placa_radar_y = personagem_y_base + (frame_altura * escala_personagens) - placa_radar_height;
+    float placa_radar_y_base = personagem_y_base + (frame_altura * escala_personagens) - placa_radar_height;
 
     // Protagonist Crouch Hitbox Height (Approximation)
     // You might want to define a specific hitbox height for crouching if the sprite changes significantly
@@ -368,7 +365,7 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     ProtagonistState protagonista_estado = PROT_NORMAL;
     // --- Protagonist Health ---
     int protagonist_health = MAX_PROTAGONIST_HEALTH;
-    // --- Invulnerability variables ---
+    // --- Invulnerability Variables ---
     bool protagonist_invulnerable = false;
     float protagonist_invulnerability_timer = 0.0;
     float protagonist_blink_timer = 0.0;
@@ -379,7 +376,8 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     NPC traficante;
     traficante.largura_sprite = al_get_bitmap_width(sprite_traficante_parada) / NPC_TRAFICANTE_FRAME_COUNT;
     traficante.altura_sprite = al_get_bitmap_height(sprite_traficante_parada);
-    traficante.x = 2000.0; // Place it far to the right, relative to the background
+    // Randomize Traficante X position, ensuring it's not too close to the start
+    traficante.x = LARGURA + (float)(rand() % (bg_width - LARGURA / 2)); // Random X far right
     traficante.y = personagem_y_base - (traficante.altura_sprite * escala_traficante - frame_altura * escala_personagens); // Adjust Y based on scaled height
     traficante.ativa = true;
     traficante.frame_atual = 0;
@@ -444,47 +442,70 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
 
     // --- Initialize obstacles (now with sprite_bitmap and only_crouch_pass) ---
     Obstaculo obstaculos[MAX_OBSTACULOS];
+    srand(time(NULL)); // Seed the random number generator
+
+    // Arrays to hold the types of obstacles and their properties for easier randomization
+    struct {
+        ALLEGRO_BITMAP *sprite;
+        float scale;
+        bool crouch_pass;
+    } obstacle_types[] = {
+        {sprite_sacos_lixo, escala_obstaculo_sacos, false},
+        {sprite_placa_radar, escala_placa_radar, true}
+    };
+    int num_obstacle_types = sizeof(obstacle_types) / sizeof(obstacle_types[0]);
+
+    // Minimum distance between obstacles (to prevent immediate overlap)
+    float min_obstacle_distance = 200.0; // Adjust as needed
+
     for (int i = 0; i < MAX_OBSTACULOS; i++) {
-        obstaculos[i].ativa = false; // Initially inactive
+        obstaculos[i].ativa = true; // All obstacles start active for placement
+
+        // Randomly choose an obstacle type
+        int type_index = rand() % num_obstacle_types;
+        obstaculos[i].sprite_bitmap = obstacle_types[type_index].sprite;
+        obstaculos[i].only_crouch_pass = obstacle_types[type_index].crouch_pass;
+
+        float current_scale = obstacle_types[type_index].scale;
+        int original_width = al_get_bitmap_width(obstaculos[i].sprite_bitmap);
+        int original_height = al_get_bitmap_height(obstaculos[i].sprite_bitmap);
+
+        obstaculos[i].width = original_width * current_scale;
+        obstaculos[i].height = original_height * current_scale;
+
+        // Randomize X position
+        // Start placing obstacles after a certain distance from the player's initial position
+        // and within the background width, ensuring space between them.
+        float min_x = LARGURA + (i * 500); // Start further out for subsequent obstacles
+        float max_x = LARGURA + (i * 500) + 1000; // Spread them out
+        if (max_x > bg_width - obstaculos[i].width) { // Don't go off the map
+             max_x = bg_width - obstaculos[i].width;
+        }
+        if (min_x > max_x) min_x = LARGURA + (i * 200); // Ensure min_x is always less than max_x, for smaller maps
+
+        obstaculos[i].x = min_x + (float)rand() / RAND_MAX * (max_x - min_x);
+
+        // Ensure vertical alignment with the ground
+        obstaculos[i].y = personagem_y_base + (frame_altura * escala_personagens) - obstaculos[i].height;
+
+        // Adjust Traficante position if it overlaps with an obstacle during initialization
+        // This is a simple check; for more complex scenarios, you might need iterative placement.
+        if (traficante.ativa) {
+             float traficante_hb_x = traficante.x; // Simplified hitbox for placement check
+             float traficante_hb_y = traficante.y;
+             float traficante_hb_w = traficante.largura_sprite * escala_traficante;
+             float traficante_hb_h = traficante.altura_sprite * escala_traficante;
+
+             if (check_collision(obstaculos[i].x, obstaculos[i].y, obstaculos[i].width, obstaculos[i].height,
+                                 traficante_hb_x, traficante_hb_y, traficante_hb_w, traficante_hb_h)) {
+                 // If collision, move the traficante slightly
+                 traficante.x += obstaculos[i].width + min_obstacle_distance;
+                 fprintf(stderr, "DEBUG: Traficante moved due to obstacle collision. New X: %.2f\n", traficante.x);
+             }
+         }
     }
-    // Manually place obstacles for testing
-
-    // Obstacle 0: Sacos de lixo
-    obstaculos[0].x = 700.0; // World X coordinate
-    obstaculos[0].y = personagem_y_base + (frame_altura * escala_personagens) - obstaculo_height_sacos; // Align to ground
-    obstaculos[0].width = obstaculo_width_sacos;
-    obstaculos[0].height = obstaculo_height_sacos;
-    obstaculos[0].ativa = true;
-    obstaculos[0].sprite_bitmap = sprite_sacos_lixo;
-    obstaculos[0].only_crouch_pass = false; // Cannot be passed only by crouching
-
-    // Obstacle 1: Sacos de lixo
-    obstaculos[1].x = 1500.0;
-    obstaculos[1].y = personagem_y_base + (frame_altura * escala_personagens) - obstaculo_height_sacos;
-    obstaculos[1].width = obstaculo_width_sacos;
-    obstaculos[1].height = obstaculo_height_sacos;
-    obstaculos[1].ativa = true;
-    obstaculos[1].sprite_bitmap = sprite_sacos_lixo;
-    obstaculos[1].only_crouch_pass = false;
-
-    // Obstacle 2: Sacos de lixo
-    obstaculos[2].x = 3000.0;
-    obstaculos[2].y = personagem_y_base + (frame_altura * escala_personagens) - obstaculo_height_sacos;
-    obstaculos[2].width = obstaculo_width_sacos;
-    obstaculos[2].height = obstaculo_height_sacos;
-    obstaculos[2].ativa = true;
-    obstaculos[2].sprite_bitmap = sprite_sacos_lixo;
-    obstaculos[2].only_crouch_pass = false;
-
-    // NEW Obstacle 3: Placa de Radar (only pass if crouching)
-    obstaculos[3].x = 2000.0; // Place it after the first few trash bags
-    obstaculos[3].y = placa_radar_y; // Use the calculated Y for the radar plate
-    obstaculos[3].width = placa_radar_width;
-    obstaculos[3].height = placa_radar_height;
-    obstaculos[3].ativa = true;
-    obstaculos[3].sprite_bitmap = sprite_placa_radar;
-    obstaculos[3].only_crouch_pass = true; // THIS IS THE KEY FLAG for this obstacle
     // --- END Obstacle Initialization ---
+
 
     ALLEGRO_TIMER *timer = al_create_timer(1.0 / 60.0);
     al_start_timer(timer);
@@ -518,10 +539,10 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                     else if (al_key_down(&estado, ALLEGRO_KEY_LEFT)) vel_x_pulo = -velocidade;
                     else vel_x_pulo = 0;
                     // When jumping, immediately set ground to base, unless we land on something else
-                    current_ground_y = personagem_y_base; 
+                    current_ground_y = personagem_y_base;
                 }
                 // When pressing DOWN, go into crouch state
-                else if (ev.keyboard.keycode == ALLEGRO_KEY_DOWN && !pulando && !atacando && !arremessando) { 
+                else if (ev.keyboard.keycode == ALLEGRO_KEY_DOWN && !pulando && !atacando && !arremessando) {
                     agachando = true; frame_agachado = 0; acc_agachado = 0; especial_ativo = false; especial_finalizado = false;
                     crouch_animation_finished = false; // Garante que a flag esteja falsa ao iniciar a animação
                 }
@@ -531,7 +552,7 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                 // --- 'B' Key for NPC Interaction ---
                 else if (ev.keyboard.keycode == ALLEGRO_KEY_B) {
                     // Calculate protagonist's hitbox center (world coordinates)
-                    float prot_world_x_center = personagem_x + (frame_largura_parado * escala_personagens) / 2.0 + deslocamento_x; 
+                    float prot_world_x_center = personagem_x + (frame_largura_parado * escala_personagens) / 2.0 + deslocamento_x;
                     float npc_world_x_center = traficante.x + (traficante.largura_sprite * escala_traficante) / 2.0;
 
                     float distance = fabs(prot_world_x_center - npc_world_x_center);
@@ -567,7 +588,7 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
             bool andando = false, correndo = false;
 
             // --- Protagonist Movement Logic ---
-            float old_deslocamento_x_prot = deslocamento_x; 
+            float old_deslocamento_x_prot = deslocamento_x;
             float old_personagem_x = personagem_x; // Store old x for collision rollback
             float old_personagem_y = personagem_y; // Store old y for collision rollback
 
@@ -621,7 +642,7 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                 if (pulando) {
                     personagem_y += vel_y;
                     vel_y += gravidade;
-                    deslocamento_x += vel_x_pulo; 
+                    deslocamento_x += vel_x_pulo;
                     if (deslocamento_x >= bg_width) deslocamento_x -= bg_width;
                     if (deslocamento_x < 0) deslocamento_x += bg_width;
 
@@ -680,7 +701,7 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                          personagem_y = current_ground_y;
                          vel_y = 0;
                     }
-                    
+                   
                     if (andando) {
                         if (correndo) { acc_correndo += 1.0 / 60.0; if (acc_correndo >= tpf_correndo) { acc_correndo -= tpf_correndo; frame_correndo = (frame_correndo + 1) % frame_total_correndo; } frame_andando = 0; acc_andando = 0; frame_parado = 0; acc_parado = 0; }
                         else { acc_andando += 1.0 / 60.0; if (acc_andando >= tpf_andando) { acc_andando -= tpf_andando; frame_andando = (frame_andando + 1) % frame_total_andando; } frame_correndo = 0; acc_correndo = 0; frame_parado = 0; acc_parado = 0; }
@@ -712,7 +733,7 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
             // --- Update NPC Audio Volume (Fade) ---
             if (traficante.ativa && instancia_som_verdebalaraio) {
                 // Calculate protagonist's hitbox center (world coordinates)
-                float prot_world_x_center = personagem_x + (frame_largura_parado * escala_personagens) / 2.0 + deslocamento_x; 
+                float prot_world_x_center = personagem_x + (frame_largura_parado * escala_personagens) / 2.0 + deslocamento_x;
                 float npc_world_x_center = traficante.x + (traficante.largura_sprite * escala_traficante) / 2.0;
 
                 float distance = fabs(prot_world_x_center - npc_world_x_center);
@@ -756,10 +777,10 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                         inimigos[i].inimigo_pode_dar_dano = true;
                         // --- Fim do reset no SPAWN ---
                         
-                        tempo_para_spawn_inimigo = min_intervalo_spawn_inimigo + 
+                        tempo_para_spawn_inimigo = min_intervalo_spawn_inimigo +
                                                      ((float)rand() / RAND_MAX) * (max_intervalo_spawn_inimigo - min_intervalo_spawn_inimigo);
                         fprintf(stderr, "DEBUG: Inimigo %d SPAWNADO em (%.2f, %.2f) com vel_x_base: %.2f. Próximo spawn em: %.2f. Estado: %d\n",
-                                    i, inimigos[i].x, inimigos[i].y, inimigos[i].vel_x, tempo_para_spawn_inimigo, inimigos[i].estado);
+                                        i, inimigos[i].x, inimigos[i].y, inimigos[i].vel_x, tempo_para_spawn_inimigo, inimigos[i].estado);
                         break;
                     }
                 }
@@ -822,12 +843,12 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
 
 
                     // --- Colisão com Protagonista: Lógica de Bloqueio e Ataque ---
-                    if (inimigos[i].estado != INIMIGO_MORRENDO && protagonista_estado == PROT_NORMAL) { 
+                    if (inimigos[i].estado != INIMIGO_MORRENDO && protagonista_estado == PROT_NORMAL) {
                         // Use the adjusted protagonist hitbox for enemy collisions
                         if (check_collision(inimigo_current_hb_x, inimigo_current_hb_y, inimigo_current_hb_w, inimigo_current_hb_h,
-                                            prot_hb_x, prot_hb_y, prot_hb_w, current_prot_hitbox_height)) { // Use current_prot_hitbox_height
+                                            prot_hb_x, prot_hb_y, prot_hb_w, current_prot_hitbox_height)) {
                             
-                            deslocamento_x = old_deslocamento_x_prot; 
+                            deslocamento_x = old_deslocamento_x_prot;
                             
                             delta_deslocamento_x = deslocamento_x - deslocamento_x_anterior;
                             deslocamento_x_anterior = deslocamento_x;
@@ -912,7 +933,7 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                                 inimigos[i].frame_atual = 0;
                                 inimigos[i].acc_animacao = 0;
                             }
-                        } 
+                        }
                         else if (inimigos[i].estado == INIMIGO_ANDANDO) {
                             inimigos[i].vel_x = inimigo_velocidade_andando_base;
                             if (dist_to_protagonist_x >= inimigo_distancia_deteccao) {
@@ -928,7 +949,7 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                                  inimigos[i].frame_atual = 0;
                                  inimigos[i].acc_animacao = 0;
                             }
-                        } 
+                        }
                         else if (inimigos[i].estado == INIMIGO_PARADO) {
                             inimigos[i].vel_x = inimigo_velocidade_parado_base;
                             if (dist_to_protagonist_x < inimigo_distancia_deteccao && dist_to_protagonist_x > inimigo_distancia_ataque) {
@@ -1002,7 +1023,7 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                                                     inimigo_hb_x, inimigo_hb_y, inimigo_hb_w, inimigo_hb_h)) {
                                     fprintf(stderr, "COLISÃO! Garrafa %d atingiu Inimigo %d! Iniciando animação de morte.\n", j, i);
                                     garrafas[j].ativa = false;
-                                     
+                                    
                                     inimigos[i].estado = INIMIGO_MORRENDO;
                                     inimigos[i].vel_x = 0;
                                     inimigos[i].frame_atual = 0;
@@ -1022,7 +1043,7 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
 
                     if (is_offscreen_left || is_offscreen_right) {
                         if (inimigos[i].estado == INIMIGO_MORRENDO && !inimigos[i].animacao_morte_finalizada) {
-                            should_deactivate = false; 
+                            should_deactivate = false;
                         } else {
                             should_deactivate = true;
                         }
@@ -1033,9 +1054,9 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                         inimigos[i].ativa = false;
                         inimigos[i].estado = INIMIGO_PARADO;
                         inimigos[i].vel_x = inimigo_velocidade_parado_base;
-                        inimigos[i].animacao_morte_finalizada = false; 
-                        inimigos[i].frame_atual = 0; 
-                        inimigos[i].acc_animacao = 0; 
+                        inimigos[i].animacao_morte_finalizada = false;
+                        inimigos[i].frame_atual = 0;
+                        inimigos[i].acc_animacao = 0;
                         inimigos[i].inimigo_pode_dar_dano = true;
                     }
                 }
@@ -1167,10 +1188,10 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                                          draw_x, obstaculos[i].y, // Obstacle's Y is its hitbox top, which aligns with its visual bottom
                                          obstaculos[i].width, obstaculos[i].height,
                                          0);
-                    // DEBUG: Draw obstacle hitbox
-                    al_draw_rectangle(draw_x, obstaculos[i].y,
-                                     draw_x + obstaculos[i].width, obstaculos[i].y + obstaculos[i].height,
-                                     al_map_rgb(255, 0, 0), 1); // Red color for obstacle hitbox
+                    // DEBUG: Drawing removed
+                    // al_draw_rectangle(draw_x, obstaculos[i].y,
+                    //                   draw_x + obstaculos[i].width, obstaculos[i].y + obstaculos[i].height,
+                    //                   al_map_rgb(255, 0, 0), 1); // Red color for obstacle hitbox
                 }
             }
             // --- END NEW ---
@@ -1179,11 +1200,11 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
             if (traficante.ativa) {
                 float draw_x = traficante.x - deslocamento_x;
                 al_draw_scaled_bitmap(sprite_traficante_parada,
-                                         traficante.frame_atual * traficante.largura_sprite, 0,
-                                         traficante.largura_sprite, traficante.altura_sprite,
-                                         draw_x, traficante.y,
-                                         traficante.largura_sprite * escala_traficante, traficante.altura_sprite * escala_traficante,
-                                         ALLEGRO_FLIP_HORIZONTAL);
+                                             traficante.frame_atual * traficante.largura_sprite, 0,
+                                             traficante.largura_sprite, traficante.altura_sprite,
+                                             draw_x, traficante.y,
+                                             traficante.largura_sprite * escala_traficante, traficante.altura_sprite * escala_traficante,
+                                             ALLEGRO_FLIP_HORIZONTAL);
 
                 float text_x = draw_x + (traficante.largura_sprite * escala_traficante) / 2.0;
                 float text_y = traficante.y + 70;
@@ -1197,58 +1218,59 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
 
             // --- DRAW CHARACTER ANIMATION ---
             if (protagonista_estado == PROT_MORRENDO) {
-                al_draw_scaled_bitmap(sprite_personagem_morte, 
-                                         personagem_frame_morte * frame_largura_personagem_morte, 0, 
-                                         frame_largura_personagem_morte, frame_altura, 
-                                         personagem_x, personagem_y, 
-                                         frame_largura_personagem_morte * escala_personagens, frame_altura * escala_personagens, 0);
+                al_draw_scaled_bitmap(sprite_personagem_morte,
+                                             personagem_frame_morte * frame_largura_personagem_morte, 0,
+                                             frame_largura_personagem_morte, frame_altura,
+                                             personagem_x, personagem_y,
+                                             frame_largura_personagem_morte * escala_personagens, frame_altura * escala_personagens, 0);
             } else if (protagonist_visible) {
                 if (pulando)
                     al_draw_scaled_bitmap(sprite_pulando, frame_pulando * frame_largura_pulando, 0, frame_largura_pulando, frame_altura,
-                                         personagem_x, personagem_y, frame_largura_pulando * escala_personagens, frame_altura * escala_personagens, 0);
+                                             personagem_x, personagem_y, frame_largura_pulando * escala_personagens, frame_altura * escala_personagens, 0);
                 else if (agachando)
                     al_draw_scaled_bitmap(sprite_agachado, frame_agachado * frame_largura_agachado, 0, frame_largura_agachado, frame_altura,
-                                         personagem_x, personagem_y, frame_largura_agachado * escala_personagens, frame_altura * escala_personagens, 0);
+                                             personagem_x, personagem_y, frame_largura_agachado * escala_personagens, frame_altura * escala_personagens, 0);
                 else if (atacando)
                     al_draw_scaled_bitmap(sprite_ataque1, frame_ataque1 * frame_largura_ataque1, 0, frame_largura_ataque1, frame_altura,
-                                         personagem_x, personagem_y, frame_largura_ataque1 * escala_personagens, frame_altura * escala_personagens, 0);
+                                             personagem_x, personagem_y, frame_largura_ataque1 * escala_personagens, frame_altura * escala_personagens, 0);
                 else if (especial_ativo)
                     al_draw_scaled_bitmap(sprite_especial, frame_especial * frame_largura_especial, 0, frame_largura_especial, frame_altura,
-                                         personagem_x, personagem_y, frame_largura_especial * escala_personagens, frame_altura * escala_personagens, 0);
+                                             personagem_x, personagem_y, frame_largura_especial * escala_personagens, frame_altura * escala_personagens, 0);
                 else if (arremessando)
                     al_draw_scaled_bitmap(sprite_arremesso, frame_arremesso * frame_largura_arremesso, 0, frame_largura_arremesso, frame_altura,
-                                         personagem_x, personagem_y, frame_largura_arremesso * escala_personagens, frame_altura * escala_personagens, 0);
+                                             personagem_x, personagem_y, frame_largura_arremesso * escala_personagens, frame_altura * escala_personagens, 0);
                 else if (andando)
                     al_draw_scaled_bitmap(correndo ? sprite_correndo : sprite_andando,
-                                         (correndo ? frame_correndo : frame_andando) * (correndo ? frame_largura_correndo : frame_largura_andando),
-                                         0,
-                                         (correndo ? frame_largura_correndo : frame_largura_andando),
-                                         frame_altura,
-                                         personagem_x, personagem_y,
-                                         (correndo ? frame_largura_correndo : frame_largura_andando) * escala_personagens,
-                                         frame_altura * escala_personagens, 0);
+                                             (correndo ? frame_correndo : frame_andando) * (correndo ? frame_largura_correndo : frame_largura_andando),
+                                             0,
+                                             (correndo ? frame_largura_correndo : frame_largura_andando),
+                                             frame_altura,
+                                             personagem_x, personagem_y,
+                                             (correndo ? frame_largura_correndo : frame_largura_andando) * escala_personagens,
+                                             frame_altura * escala_personagens, 0);
                 else
                     al_draw_scaled_bitmap(sprite_parado, frame_parado * frame_largura_parado, 0, frame_largura_parado, frame_altura,
-                                         personagem_x, personagem_y, frame_largura_parado * escala_personagens, frame_altura * escala_personagens, 0);
+                                             personagem_x, personagem_y, frame_largura_parado * escala_personagens, frame_altura * escala_personagens, 0);
             }
             // --- END DRAW CHARACTER ANIMATION ---
 
 
             // --- DEBUG: Draw Protagonist Hitbox ---
-            // Draw using adjusted protagonist hitbox coordinates and height
-            al_draw_rectangle(prot_hb_x, prot_hb_y,
-                                 prot_hb_x + prot_hb_w, prot_hb_y + current_prot_hitbox_height,
-                                 al_map_rgb(255, 255, 0), 1);
+            // Drawing removed
+            // al_draw_rectangle(prot_hb_x, prot_hb_y,
+            //                  prot_hb_x + prot_hb_w, prot_hb_y + current_prot_hitbox_height,
+            //                  al_map_rgb(255, 255, 0), 1);
             // --- END DEBUG ---
 
             // --- DEBUG: Draw Protagonist ATTACK Hitbox ---
-            if (atacando) {
-                float prot_attack_hb_x_debug = personagem_x + prot_attack_hitbox_offset_x;
-                float prot_attack_hb_y_debug = personagem_y + prot_attack_hitbox_offset_y;
-                al_draw_rectangle(prot_attack_hb_x_debug, prot_attack_hb_y_debug,
-                                     prot_attack_hb_x_debug + prot_attack_hb_w, prot_attack_hb_y_debug + prot_attack_hb_h,
-                                     al_map_rgb(0, 255, 0), 1);
-            }
+            // Drawing removed
+            // if (atacando) {
+            //    float prot_attack_hb_x_debug = personagem_x + prot_attack_hitbox_offset_x;
+            //    float prot_attack_hb_y_debug = personagem_y + prot_attack_hitbox_offset_y;
+            //    al_draw_rectangle(prot_attack_hb_x_debug, prot_attack_hb_y_debug,
+            //                      prot_attack_hb_x_debug + prot_attack_hb_w, prot_attack_hb_y_debug + prot_attack_hb_h,
+            //                      al_map_rgb(0, 255, 0), 1);
+            // }
             // --- END DEBUG ---
 
 
@@ -1260,11 +1282,12 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                                                      escala_garrafa, escala_garrafa,
                                                      garrafas[i].angulo,
                                                      0);
-                    float garrafa_hb_x_debug = garrafas[i].x - garrafa_hitbox_width / 2.0;
-                    float garrafa_hb_y_debug = garrafas[i].y - garrafa_hitbox_height / 2.0;
-                    al_draw_rectangle(garrafa_hb_x_debug, garrafa_hb_y_debug,
-                                         garrafa_hb_x_debug + garrafa_hitbox_width, garrafa_hb_y_debug + garrafa_hitbox_height,
-                                         al_map_rgb(255, 0, 255), 1);
+                    // DEBUG: Drawing removed
+                    // float garrafa_hb_x_debug = garrafas[i].x - garrafa_hitbox_width / 2.0;
+                    // float garrafa_hb_y_debug = garrafas[i].y - garrafa_hitbox_height / 2.0;
+                    // al_draw_rectangle(garrafa_hb_x_debug, garrafa_hb_y_debug,
+                    //                   garrafa_hb_x_debug + garrafa_hitbox_width, garrafa_hb_y_debug + garrafa_hitbox_height,
+                    //                   al_map_rgb(255, 0, 255), 1);
                 }
             }
 
@@ -1288,17 +1311,18 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                     }
                     
                     al_draw_scaled_bitmap(current_enemy_sprite,
-                                         inimigos[i].frame_atual * current_frame_largura_inimigo, 0,
-                                         current_frame_largura_inimigo, inimigo_altura_sprite,
-                                         inimigos[i].x, inimigos[i].y,
-                                         current_frame_largura_inimigo * escala_personagens, inimigo_altura_sprite * escala_personagens,
-                                         ALLEGRO_FLIP_HORIZONTAL);
+                                             inimigos[i].frame_atual * current_frame_largura_inimigo, 0,
+                                             current_frame_largura_inimigo, inimigo_altura_sprite,
+                                             inimigos[i].x, inimigos[i].y,
+                                             current_frame_largura_inimigo * escala_personagens, inimigo_altura_sprite * escala_personagens,
+                                             ALLEGRO_FLIP_HORIZONTAL);
 
-                    float inimigo_hb_x_debug = inimigos[i].x + inimigos[i].hitbox_offset_x;
-                    float inimigo_hb_y_debug = inimigos[i].y + inimigos[i].hitbox_offset_y;
-                    al_draw_rectangle(inimigo_hb_x_debug, inimigo_hb_y_debug,
-                                         inimigo_hb_x_debug + inimigos[i].hitbox_width, inimigo_hb_y_debug + inimigos[i].hitbox_height,
-                                         al_map_rgb(0, 255, 255), 1);
+                    // DEBUG: Drawing removed
+                    // float inimigo_hb_x_debug = inimigos[i].x + inimigos[i].hitbox_offset_x;
+                    // float inimigo_hb_y_debug = inimigos[i].y + inimigos[i].hitbox_offset_y;
+                    // al_draw_rectangle(inimigo_hb_x_debug, inimigo_hb_y_debug,
+                    //                   inimigo_hb_x_debug + inimigos[i].hitbox_width, inimigo_hb_y_debug + inimigos[i].hitbox_height,
+                    //                   al_map_rgb(0, 255, 255), 1);
                 }
             }
 
@@ -1342,6 +1366,11 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     al_destroy_bitmap(sprite_placa_radar); // NEW: Destroy new obstacle sprite
     al_destroy_timer(timer);
 }
+
+
+
+
+
 
 
 
