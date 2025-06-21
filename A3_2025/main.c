@@ -11,17 +11,18 @@
 #include <allegro5/allegro_acodec.h>
 #include <allegro5/allegro_primitives.h>
 #include <math.h>
-#include <time.h>
+#include <time.h> // Necessário para srand(time(NULL))
 
+// --- Constantes da Janela ---
 #define LARGURA 1536
 #define ALTURA 864
 
-#define NUM_OPCOES 3
+#define NUM_OPCOES 3 // Não usado diretamente na função jogo, mas mantido
 
 const int VIDEO_LARGURA = 1920;
 const int VIDEO_ALTURA = 1080;
 
-// --- Structure to hold bottle properties ---
+// --- Estrutura para propriedades das garrafas ---
 typedef struct {
     float x, y;
     float vel_x;
@@ -29,99 +30,103 @@ typedef struct {
     bool ativa;
 } Garrafa;
 
+// --- Define número máximo de garrafas ---
+#define MAX_GARRAFAS 5 // Você pode ajustar este número
 
-// --- Define maximum number of bottles ---
-#define MAX_GARRAFAS 5 // You can adjust this number
-
-
-// --- Enemy States Enum ---
+// --- Enumeração dos Estados do Inimigo ---
 typedef enum {
     INIMIGO_PARADO,
     INIMIGO_ANDANDO,
-    INIMIGO_ATACANDO, // NEW: State for attacking
+    INIMIGO_ATACANDO, // NOVO: Estado para atacar
     INIMIGO_MORRENDO
 } EnemyState;
 
+// --- Enumeração dos Estados do Protagonista ---
 typedef enum {
-    PROT_NORMAL,    // Estado normal (parado, andando, pulando, agachando, atacando, arremessando)
-    PROT_MORRENDO    // Estado de morte do protagonista
+    PROT_NORMAL,      // Estado normal (parado, andando, pulando, agachando, atacando, arremessando)
+    PROT_MORRENDO     // Estado de morte do protagonista
 } ProtagonistState;
 
-// Structure to hold enemy properties
+// Estrutura para propriedades do inimigo
 typedef struct {
-    float x, y;    // Posição do inimigo na TELA
-    float vel_x;    // Velocidade horizontal RELATIVA À TELA
+    float x, y;     // Posição do inimigo no MUNDO (não na TELA)
+    float vel_x;    // Velocidade horizontal RELATIVA AO MUNDO
     int frame_atual;
     float acc_animacao;
     bool ativa;
     EnemyState estado;
-    bool animacao_morte_finalizada; // NEW: Flag to know if death animation completed
+    bool animacao_morte_finalizada; // NOVO: Flag para saber se a animação de morte foi concluída
     float hitbox_offset_x;
     float hitbox_offset_y;
     float hitbox_width;
     float hitbox_height;
-    bool inimigo_pode_dar_dano;
+    bool inimigo_pode_dar_dano; // NOVO: Controla se o inimigo pode dar dano neste momento
 } Inimigo;
 
-// --- Define maximum number of enemies ---
-#define MAX_INIMIGOS 3 // You can adjust this number
+// --- Define número máximo de inimigos ---
+#define MAX_INIMIGOS 3 // Você pode ajustar este número
 
-// --- Protagonist Health Definitions ---
+// --- Definições de Vida do Protagonista ---
 #define MAX_PROTAGONIST_HEALTH 100
-#define PROTAGONIST_DAMAGE_PER_HIT 20 // Amount of health lost per hit
-// --- Invulnerability Definitions ---
-#define PROTAGONIST_INVULNERABILITY_DURATION 1.0 // 1 second
-#define PROTAGONIST_BLINK_INTERVAL 0.1 // Blink every 0.1 seconds
+#define PROTAGONIST_DAMAGE_PER_HIT 20 // Quantidade de vida perdida por acerto
+// --- Definições de Invulnerabilidade ---
+#define PROTAGONIST_INVULNERABILITY_DURATION 1.0 // 1 segundo de invulnerabilidade após levar dano
+#define PROTAGONIST_BLINK_INTERVAL 0.1 // Pisca a cada 0.1 segundos durante a invulnerabilidade
 
-// --- NPC Structure ---
+// --- Estrutura NPC ---
 typedef struct {
-    float x, y;
+    float x, y; // Coordenadas no mundo
     int frame_atual;
     float acc_animacao;
-    bool ativa; // Always true for a permanent NPC
+    bool ativa; // Sempre true para um NPC permanente
     int largura_sprite;
     int altura_sprite;
 } NPC;
 
-// --- NPC Definitions ---
+// --- Definições NPC ---
 #define NPC_TRAFICANTE_FRAME_COUNT 7
-#define NPC_TRAFICANTE_TPF (1.0 / 8.0) // Animation speed for the NPC
-#define NPC_HEAL_AMOUNT 20 // Amount of HP restored
-#define NPC_INTERACTION_DISTANCE 100.0 // Distance to interact with the NPC
-#define NPC_HEAL_COST 20 // Cost to buy from NPC
+#define NPC_TRAFICANTE_TPF (1.0 / 8.0) // Velocidade de animação do NPC
+#define NPC_HEAL_AMOUNT 20 // Quantidade de HP restaurada
+#define NPC_INTERACTION_DISTANCE 100.0 // Distância para interagir com o NPC
+#define NPC_HEAL_COST 20 // Custo para comprar do NPC
 
-// --- Audio Fade Definitions ---
-#define AUDIO_MAX_DISTANCE 600.0 // Max distance in pixels for sound to be audible
-#define AUDIO_MIN_DISTANCE 50.0  // Min distance in pixels for full volume
+// --- Definições de Fade de Áudio ---
+#define AUDIO_MAX_DISTANCE 600.0 // Distância máxima em pixels para o som ser audível
+#define AUDIO_MIN_DISTANCE 50.0  // Distância mínima em pixels para volume total
 
-// --- UPDATED: Obstacle Structure to include sprite bitmap ---
+// --- ESTRUTURA ATUALIZADA: Obstáculo para incluir bitmap do sprite ---
 typedef struct {
-    float x, y; // World coordinates
-    float width, height; // Hitbox dimensions
+    float x, y; // Coordenadas do mundo (não da tela)
+    float width, height; // Dimensões da hitbox
     bool ativa;
-    ALLEGRO_BITMAP *sprite_bitmap; // Pointer to the actual bitmap
-    bool only_crouch_pass; // NEW: Flag for obstacles that can only be passed while crouching
+    ALLEGRO_BITMAP *sprite_bitmap; // Ponteiro para o bitmap real
+    bool only_crouch_pass; // NOVO: Flag para obstáculos que só podem ser passados agachado
 } Obstaculo;
 
-// --- UPDATED: Define maximum number of obstacles ---
-#define MAX_OBSTACULOS 4 // Increased to 4 for the new obstacle
+// --- ATUALIZADO: Define número máximo de obstáculos ---
+#define MAX_OBSTACULOS 4 // Aumentado para 4 para o novo obstáculo
 
-// --- Money Note Structure ---
+// --- Estrutura de Nota de Dinheiro ---
 typedef struct {
     float x, y;
-    int value; // 2, 5, or 10
+    int value; // 2, 5, ou 10
     ALLEGRO_BITMAP *sprite_bitmap;
     bool ativa;
     float hitbox_width;
     float hitbox_height;
+    float spawn_time; // Tempo em que a nota foi spawnada
 } MoneyNote;
 
-// --- Money Note Definitions ---
+// --- Definições de Nota de Dinheiro ---
 #define MAX_MONEY_NOTES 5
-#define MONEY_NOTE_SPAWN_INTERVAL 5.0 // Time in seconds between spawns
-#define MONEY_NOTE_LIFETIME 10.0 // Time in seconds before a note despawns
-#define MONEY_NOTE_SCALE 0.3 // Scale for money note sprites
+#define MONEY_NOTE_SPAWN_INTERVAL 5.0 // Tempo em segundos entre spawns
+#define MONEY_NOTE_LIFETIME 10.0 // Tempo em segundos antes de uma nota desaparecer
+#define MONEY_NOTE_SCALE 0.3 // Escala para sprites de notas de dinheiro
 
+
+// --- Funções Auxiliares ---
+
+// Função para esperar uma tecla (útil para menus)
 void esperar_tecla(ALLEGRO_EVENT_QUEUE *fila) {
     ALLEGRO_EVENT ev;
     while (1) {
@@ -130,7 +135,7 @@ void esperar_tecla(ALLEGRO_EVENT_QUEUE *fila) {
     }
 }
 
-// Função para desenhar o vídeo redimensionado e centralizado mantendo a proporção
+// Função para desenhar o vídeo redimensionado e centralizado mantendo a proporção (não usada na função jogo, mas mantida)
 void desenhar_video_proporcional(ALLEGRO_BITMAP *frame) {
     if (!frame) return;
 
@@ -160,28 +165,27 @@ void desenhar_video_proporcional(ALLEGRO_BITMAP *frame) {
                          0);
 }
 
-bool check_collision(float x1, float y1, float w1, float h1,float x2, float y2, float w2, float h2) {
-
+// Função para verificar colisão entre dois retângulos
+bool check_collision(float x1, float y1, float w1, float h1, float x2, float y2, float w2, float h2) {
     return x1 < x2 + w2 &&
-
            x1 + w1 > x2 &&
-
            y1 < y2 + h2 &&
-
            y1 + h1 > y2;
-
 }
 
+// --- Função Principal do Jogo ---
 void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *fonte) {
     fprintf(stderr, "DEBUG: Início da função jogo.\n");
 
-    float deslocamento_x = 0.0;
+    // --- Variáveis de Jogo ---
+    float deslocamento_x = 0.0; // Deslocamento global do mundo (mundo "infinito")
     float velocidade_andar = 3.0;
     float velocidade_correr = 6.0;
     float velocidade = velocidade_andar;
     float escala_personagens = 3.0;
-    float escala_traficante = 1.7; // Specific scale for the Traficante NPC
+    float escala_traficante = 1.7; // Escala específica para o NPC Traficante
 
+    // --- Carregamento de Bitmaps (Sprites) ---
     ALLEGRO_BITMAP *background = al_load_bitmap("background.png");
     ALLEGRO_BITMAP *sprite_parado = al_load_bitmap("personagem.png");
     ALLEGRO_BITMAP *sprite_andando = al_load_bitmap("personagem_andando.png");
@@ -199,36 +203,37 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     ALLEGRO_BITMAP *sprite_personagem_morte = al_load_bitmap("personagem_morte.png");
     ALLEGRO_BITMAP *sprite_traficante_parada = al_load_bitmap("traficante_parada.png");
     ALLEGRO_BITMAP *sprite_sacos_lixo = al_load_bitmap("sacos_lixo.png");
-    ALLEGRO_BITMAP *sprite_placa_radar = al_load_bitmap("placa_radar.png"); // NEW: Load new obstacle sprite
+    ALLEGRO_BITMAP *sprite_placa_radar = al_load_bitmap("placa_radar.png"); // NOVO: Carrega sprite de novo obstáculo
 
-    // --- NEW: Load Money Note Sprites ---
+    // --- NOVO: Carrega Sprites de Notas de Dinheiro ---
     ALLEGRO_BITMAP *sprite_2reais = al_load_bitmap("2reais.png");
     ALLEGRO_BITMAP *sprite_5reais = al_load_bitmap("5reais.png");
     ALLEGRO_BITMAP *sprite_10reais = al_load_bitmap("10reais.png");
-    // --- END NEW ---
+    // --- FIM NOVO ---
 
-    // --- Load Audio Sample ---
+    // --- Carregamento de Áudio ---
     ALLEGRO_SAMPLE *som_verdebalaraio = al_load_sample("verdebalaraio.ogg");
     ALLEGRO_SAMPLE_INSTANCE *instancia_som_verdebalaraio = NULL;
 
+    // --- Verificação de Carregamento de Ativos (Bitmaps e Áudios) ---
     if (!background || !sprite_parado || !sprite_andando || !sprite_correndo || !sprite_pulando ||
         !sprite_agachado || !sprite_especial || !sprite_ataque1 || !sprite_arremesso || !sprite_garrafa ||
         !sprite_inimigo_parado || !sprite_inimigo_andando || !sprite_inimigo_morte || !sprite_inimigo_ataque ||
         !sprite_personagem_morte || !sprite_traficante_parada || !som_verdebalaraio || !sprite_sacos_lixo ||
-        !sprite_placa_radar || !sprite_2reais || !sprite_5reais || !sprite_10reais) { // Check all new assets including money notes
+        !sprite_placa_radar || !sprite_2reais || !sprite_5reais || !sprite_10reais) {
         fprintf(stderr, "ERRO CRÍTICO: Falha ao carregar um ou mais bitmaps/áudios! Verifique nomes/caminhos dos arquivos.\n");
-        // Detailed error messages for debugging
+        // Mensagens de erro detalhadas para depuração
         if (!background) fprintf(stderr, "Falha ao carregar background.png\n");
         if (!sprite_parado) fprintf(stderr, "Falha ao carregar personagem.png\n");
         if (!sprite_traficante_parada) fprintf(stderr, "Falha ao carregar traficante_parada.png\n");
         if (!som_verdebalaraio) fprintf(stderr, "Falha ao carregar verdebalaraio.ogg\n");
         if (!sprite_sacos_lixo) fprintf(stderr, "Falha ao carregar sacos_lixo.png\n");
-        if (!sprite_placa_radar) fprintf(stderr, "Falha ao carregar placa_radar.png\n"); // NEW: Error for new obstacle sprite
-        if (!sprite_2reais) fprintf(stderr, "Falha ao carregar 2reais.png\n"); // NEW: Error for new money note
-        if (!sprite_5reais) fprintf(stderr, "Falha ao carregar 5reais.png\n"); // NEW: Error for new money note
-        if (!sprite_10reais) fprintf(stderr, "Falha ao carregar 10reais.png\n"); // NEW: Error for new money note
+        if (!sprite_placa_radar) fprintf(stderr, "Falha ao carregar placa_radar.png\n");
+        if (!sprite_2reais) fprintf(stderr, "Falha ao carregar 2reais.png\n");
+        if (!sprite_5reais) fprintf(stderr, "Falha ao carregar 5reais.png\n");
+        if (!sprite_10reais) fprintf(stderr, "Falha ao carregar 10reais.png\n");
 
-        // Cleanup any loaded assets before returning
+        // Limpa todos os ativos carregados antes de retornar em caso de falha
         if (background) al_destroy_bitmap(background);
         if (sprite_parado) al_destroy_bitmap(sprite_parado);
         if (sprite_andando) al_destroy_bitmap(sprite_andando);
@@ -247,19 +252,19 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
         if (sprite_traficante_parada) al_destroy_bitmap(sprite_traficante_parada);
         if (som_verdebalaraio) al_destroy_sample(som_verdebalaraio);
         if (sprite_sacos_lixo) al_destroy_bitmap(sprite_sacos_lixo);
-        if (sprite_placa_radar) al_destroy_bitmap(sprite_placa_radar); // NEW: Destroy new obstacle sprite
-        if (sprite_2reais) al_destroy_bitmap(sprite_2reais); // NEW: Destroy new money note
-        if (sprite_5reais) al_destroy_bitmap(sprite_5reais); // NEW: Destroy new money note
-        if (sprite_10reais) al_destroy_bitmap(sprite_10reais); // NEW: Destroy new money note
+        if (sprite_placa_radar) al_destroy_bitmap(sprite_placa_radar);
+        if (sprite_2reais) al_destroy_bitmap(sprite_2reais);
+        if (sprite_5reais) al_destroy_bitmap(sprite_5reais);
+        if (sprite_10reais) al_destroy_bitmap(sprite_10reais);
         return;
     }
     fprintf(stderr, "DEBUG: Todos os bitmaps e áudios carregados com sucesso.\n");
 
-    // --- Create and attach audio instance ---
+    // --- Cria e anexa instância de áudio ---
     instancia_som_verdebalaraio = al_create_sample_instance(som_verdebalaraio);
     if (!instancia_som_verdebalaraio) {
         fprintf(stderr, "ERRO CRÍTICO: Falha ao criar instancia_som_verdebalaraio!\n");
-        // Handle error, destroy loaded assets
+        // Limpa os ativos carregados
         al_destroy_bitmap(background); al_destroy_bitmap(sprite_parado); al_destroy_bitmap(sprite_andando);
         al_destroy_bitmap(sprite_correndo); al_destroy_bitmap(sprite_pulando); al_destroy_bitmap(sprite_agachado);
         al_destroy_bitmap(sprite_especial); al_destroy_bitmap(sprite_ataque1); al_destroy_bitmap(sprite_arremesso);
@@ -268,19 +273,21 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
         al_destroy_bitmap(sprite_personagem_morte); al_destroy_bitmap(sprite_traficante_parada);
         al_destroy_sample(som_verdebalaraio);
         al_destroy_bitmap(sprite_sacos_lixo);
-        al_destroy_bitmap(sprite_placa_radar); // NEW: Destroy new obstacle sprite
-        al_destroy_bitmap(sprite_2reais); al_destroy_bitmap(sprite_5reais); al_destroy_bitmap(sprite_10reais); // NEW: Destroy money notes
+        al_destroy_bitmap(sprite_placa_radar);
+        al_destroy_bitmap(sprite_2reais); al_destroy_bitmap(sprite_5reais); al_destroy_bitmap(sprite_10reais);
         return;
     }
     al_set_sample_instance_playmode(instancia_som_verdebalaraio, ALLEGRO_PLAYMODE_LOOP);
     al_attach_sample_instance_to_mixer(instancia_som_verdebalaraio, al_get_default_mixer());
-    al_set_sample_instance_gain(instancia_som_verdebalaraio, 0.0); // Start with zero volume
-    al_play_sample_instance(instancia_som_verdebalaraio); // Start playing (silently)
-    // --- END NEW ---
+    al_set_sample_instance_gain(instancia_som_verdebalaraio, 0.0); // Começa com volume zero
+    al_play_sample_instance(instancia_som_verdebalaraio); // Começa a tocar (silenciosamente)
+    // --- FIM NOVO ---
 
+    // --- Dimensões do Background para Tiling ---
     int bg_width = al_get_bitmap_width(background);
     int bg_height = al_get_bitmap_height(background);
 
+    // --- Definições de Frames e Alturas dos Sprites ---
     int frame_total_parado = 6, frame_total_andando = 8, frame_total_correndo = 8, frame_total_pulando = 16, frame_total_agachado = 8;
     int frame_total_especial = 13;
     int frame_total_ataque1 = 5;
@@ -299,7 +306,7 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     int frame_largura_especial = 1664 / frame_total_especial;
     int frame_largura_ataque1 = 640 / frame_total_ataque1;
     int frame_largura_arremesso = 512 / frame_total_arremesso;
-    int frame_altura = 128; // Character sprite height (and enemy sprite height)
+    int frame_altura = 128; // Altura do sprite do personagem (e do inimigo)
 
     int frame_largura_inimigo_parado = al_get_bitmap_width(sprite_inimigo_parado) / frame_total_inimigo_parado;
     int frame_largura_inimigo_andando = al_get_bitmap_width(sprite_inimigo_andando) / frame_total_inimigo_andando;
@@ -314,73 +321,62 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     if (frame_largura_inimigo_ataque > inimigo_largura_sprite_max) {
         inimigo_largura_sprite_max = frame_largura_inimigo_ataque;
     }
-
     int inimigo_altura_sprite = frame_altura;
 
-    // --- Protagonist Hitbox Properties ---
+    // --- Propriedades da Hitbox do Protagonista ---
     float prot_hitbox_offset_x = 40.0 * escala_personagens;
-    float prot_hitbox_offset_y = 5.0 * escala_personagens;   // Adjusted for feet
+    float prot_hitbox_offset_y = 5.0 * escala_personagens;  // Ajustado para os pés
     float prot_hitbox_width = (frame_largura_parado - 80) * escala_personagens;
-    float prot_hitbox_height = (frame_altura - 10) * escala_personagens; // Adjusted for feet
-    // --- End Protagonist Hitbox ---
+    float prot_hitbox_height = (frame_altura - 10) * escala_personagens; // Ajustado para os pés
+    // --- Fim Hitbox do Protagonista ---
 
-    // --- Protagonist ATTACK Hitbox Properties ---
+    // --- Propriedades da Hitbox de ATAQUE do Protagonista ---
     float prot_attack_hitbox_offset_x = 60.0 * escala_personagens;
     float prot_attack_hitbox_offset_y = 50.0 * escala_personagens;
     float prot_attack_hitbox_width = 50 * escala_personagens;
     float prot_attack_hitbox_height = 80.0 * escala_personagens;
-    // --- END Protagonist ATTACK Hitbox ---
+    // --- FIM Hitbox de ATAQUE do Protagonista ---
 
-
+    // --- Propriedades da Garrafa ---
     int garrafa_largura_original = al_get_bitmap_width(sprite_garrafa);
     int garrafa_altura_original = al_get_bitmap_height(sprite_garrafa);
-
     float escala_garrafa = 1.0;
     float garrafa_hitbox_scale = 0.8;
     float garrafa_hitbox_width = garrafa_largura_original * escala_garrafa * garrafa_hitbox_scale;
     float garrafa_hitbox_height = garrafa_altura_original * escala_garrafa * garrafa_hitbox_scale;
 
-    // --- Obstacle Properties for different types ---
-    // Sacos de lixo (existing)
+    // --- Propriedades de Obstáculos (para diferentes tipos) ---
+    // Sacos de lixo (existente)
     float escala_obstaculo_sacos = 0.1;
     int obstaculo_largura_original_sacos = al_get_bitmap_width(sprite_sacos_lixo);
     int obstaculo_altura_original_sacos = al_get_bitmap_height(sprite_sacos_lixo);
     float obstaculo_width_sacos = obstaculo_largura_original_sacos * escala_obstaculo_sacos;
     float obstaculo_height_sacos = obstaculo_altura_original_sacos * escala_obstaculo_sacos;
 
-    // NOVO: Placa de Radar properties
-    float escala_placa_radar = 0.3; // Adjust as needed for its size
+    // NOVO: Propriedades da Placa de Radar
+    float escala_placa_radar = 0.3; // Ajuste conforme necessário para o tamanho
     int placa_radar_largura_original = al_get_bitmap_width(sprite_placa_radar);
     int placa_radar_altura_original = al_get_bitmap_height(sprite_placa_radar);
     float placa_radar_width = placa_radar_largura_original * escala_placa_radar;
     float placa_radar_height = placa_radar_altura_original * escala_placa_radar;
 
-
     float personagem_x = LARGURA / 2.0 - (frame_largura_correndo * escala_personagens) / 2.0;
     float personagem_y_base = (ALTURA - 300) - (frame_altura * escala_personagens) / 2.0;
     float personagem_y = personagem_y_base;
 
+    // Altura da hitbox do protagonista agachado (Aproximação)
+    float prot_crouch_hitbox_height = (frame_altura - 50) * escala_personagens; // Exemplo: 50 pixels mais curta ao agachar
 
-    // For a "pass-through-crouching" obstacle, its hitbox height should be above the crouch height
-    // and its Y position should align its bottom with the ground.
-    // Assuming the main ground level is 'personagem_y_base + (frame_altura * escala_personagens)'
-    float placa_radar_y_base = personagem_y_base + (frame_altura * escala_personagens) - placa_radar_height;
-
-    // Protagonist Crouch Hitbox Height (Approximation)
-    // You might want to define a specific hitbox height for crouching if the sprite changes significantly
-    float prot_crouch_hitbox_height = (frame_altura - 50) * escala_personagens; // Example: 50 pixels shorter when crouching
-    // --- END Obstacle Properties ---
-
+    // --- Variáveis de Animação do Personagem ---
     int frame_parado = 0, frame_andando = 0, frame_correndo = 0, frame_pulando = 0, frame_agachado = 0, frame_especial = 0, frame_ataque1 = 0;
     int frame_arremesso = 0;
-    // --- Protagonist Death Animation Variables ---
+    // --- Variáveis de Animação de Morte do Protagonista ---
     int personagem_frame_morte = 0;
     float personagem_acc_morte = 0;
-    float tpf_personagem_morte = 1.0 / 8.0; // Speed of protagonist death animation
+    float tpf_personagem_morte = 1.0 / 8.0; // Velocidade da animação de morte do protagonista
     bool personagem_morte_animacao_finalizada = false;
-    // --- END NEW ---
 
-
+    // --- Tempos Por Frame (TPF) para Animações ---
     float tpf_parado = 1.0 / 5.0, tpf_andando = 1.0 / 10.0, tpf_correndo = 1.0 / 10.0, tpf_pulando = 1.0 / 12, tpf_agachado = 1.0 / 8.0;
     float tpf_especial = 1.0 / 15.0;
     float tpf_ataque1 = 1.0 / 10.0;
@@ -390,72 +386,70 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     float tpf_inimigo_ataque = 1.0 / 8.0;
     float tpf_inimigo_morte = 1.0 / 8.0;
 
+    // --- Acumuladores de Tempo para Animações ---
     float acc_parado = 0, acc_andando = 0, acc_correndo = 0, acc_pulando = 0, acc_agachado = 0, acc_especial = 0, acc_ataque1 = 0;
     float acc_arremesso = 0;
 
-    
+    // --- Variáveis de Estado do Protagonista ---
     ProtagonistState protagonista_estado = PROT_NORMAL;
-    // --- Protagonist Health ---
-    int protagonist_health = MAX_PROTAGONIST_HEALTH;
-    // --- Invulnerability Variables ---
+    int protagonist_health = MAX_PROTAGONIST_HEALTH; // Vida atual do protagonista
+    // --- Variáveis de Invulnerabilidade ---
     bool protagonist_invulnerable = false;
     float protagonist_invulnerability_timer = 0.0;
     float protagonist_blink_timer = 0.0;
-    bool protagonist_visible = true; // For blinking effect
-    // --- END NEW ---
+    bool protagonist_visible = true; // Para efeito de piscar
 
-    // --- NEW: Player Money Variable ---
-    int player_money = 2; // Starting money
-    // --- END NEW ---
+    // --- NOVO: Variável de Dinheiro do Jogador ---
+    int player_money = 2; // Dinheiro inicial
 
-    // --- Initialize NPC ---
+    // --- Inicialização do NPC Traficante ---
     NPC traficante;
     traficante.largura_sprite = al_get_bitmap_width(sprite_traficante_parada) / NPC_TRAFICANTE_FRAME_COUNT;
     traficante.altura_sprite = al_get_bitmap_height(sprite_traficante_parada);
-    // Randomize Traficante X position, ensuring it's not too close to the start
-    traficante.x = LARGURA + (float)(rand() % (bg_width - LARGURA / 2)); // Random X far right
-    traficante.y = personagem_y_base - (traficante.altura_sprite * escala_traficante - frame_altura * escala_personagens); // Adjust Y based on scaled height
+    // MODIFICADO: Posição inicial do traficante para geração procedural no mundo infinito
+    traficante.x = 4000; // Coloca o primeiro traficante bem à frente no início do jogo (coordenada de mundo)
+    traficante.y = personagem_y_base - (traficante.altura_sprite * escala_traficante - frame_altura * escala_personagens);
     traficante.ativa = true;
     traficante.frame_atual = 0;
     traficante.acc_animacao = 0;
-    // --- END NEW ---
 
+    // --- Variáveis de Movimento do Protagonista ---
     bool pulando = false;
     bool agachando = false;
     bool especial_ativo = false;
     bool especial_finalizado = false;
     bool atacando = false;
     bool arremessando = false;
-    bool crouch_animation_finished = false; // NOVO: Flag para controlar o fim da animação de agachar
+    bool crouch_animation_finished = false; // Flag para controlar o fim da animação de agachar
 
     float vel_y = 0.0;
-    float gravidade = 0.5; // Increased gravity for faster falls
+    float gravidade = 0.5; // Gravidade aumentada para quedas mais rápidas
     float vel_x_pulo = 0.0;
 
-    // --- NEW: Current ground for protagonist (either base or obstacle top) ---
+    // --- NOVO: Variável para o chão atual do protagonista (base ou topo de obstáculo) ---
     float current_ground_y = personagem_y_base;
-    // --- END NEW ---
 
+    // --- Inicialização de Garrafas ---
     Garrafa garrafas[MAX_GARRAFAS];
     float garrafa_velocidade_angular = 0.2;
-
     for (int i = 0; i < MAX_GARRAFAS; i++) {
         garrafas[i].ativa = false;
     }
 
+    // --- Inicialização de Inimigos ---
     Inimigo inimigos[MAX_INIMIGOS];
     float tempo_para_spawn_inimigo = 0.5;
     float min_intervalo_spawn_inimigo = 0.5;
     float max_intervalo_spawn_inimigo = 2.0;
 
-    float inimigo_velocidade_parado_base = -0.5;
-    float inimigo_velocidade_andando_base = -2.5;
-    float inimigo_velocidade_ataque_base = 0.0;
+    float inimigo_velocidade_parado_base = -0.5; // Ajustado para ser negativo para mover para a esquerda
+    float inimigo_velocidade_andando_base = -2.5; // Ajustado para ser negativo para mover para a esquerda
+    float inimigo_velocidade_ataque_base = 0.0; // Inimigo para ao atacar
 
     float inimigo_distancia_deteccao = 500.0;
     float inimigo_distancia_ataque = 180.0;
 
-    float deslocamento_x_anterior = deslocamento_x;
+    float deslocamento_x_anterior = deslocamento_x; // Para calcular a movimentação do mundo
 
     fprintf(stderr, "DEBUG: Inicializando array de inimigos (MAX_INIMIGOS: %d).\n", MAX_INIMIGOS);
     for (int i = 0; i < MAX_INIMIGOS; i++) {
@@ -466,21 +460,21 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
         inimigos[i].vel_x = inimigo_velocidade_parado_base;
         inimigos[i].animacao_morte_finalizada = false;
         inimigos[i].inimigo_pode_dar_dano = true;
-        
+    
         inimigos[i].hitbox_offset_x = 57.0 * escala_personagens;
         inimigos[i].hitbox_offset_y = 20 * escala_personagens;
         inimigos[i].hitbox_width = (frame_largura_inimigo_parado - 100) * escala_personagens;
-        inimigos[i].hitbox_height = (inimigo_altura_sprite - 20) * escala_personagens;    
+        inimigos[i].hitbox_height = (inimigo_altura_sprite - 20) * escala_personagens;   
 
         fprintf(stderr, "DEBUG: Inimigo %d inicializado como inativo.\n", i);
     }
     fprintf(stderr, "DEBUG: Tempo inicial para spawn de inimigo: %.2f\n", tempo_para_spawn_inimigo);
 
-    // --- Initialize obstacles (now with sprite_bitmap and only_crouch_pass) ---
+    // --- Inicialização de Obstáculos para Geração Procedural ---
     Obstaculo obstaculos[MAX_OBSTACULOS];
-    srand(time(NULL)); // Seed the random number generator
+    srand(time(NULL)); // Semeia o gerador de números aleatórios
 
-    // Arrays to hold the types of obstacles and their properties for easier randomization
+    // Array para conter os tipos de obstáculos e suas propriedades para facilitar a randomização
     struct {
         ALLEGRO_BITMAP *sprite;
         float scale;
@@ -491,13 +485,15 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     };
     int num_obstacle_types = sizeof(obstacle_types) / sizeof(obstacle_types[0]);
 
-    // Minimum distance between obstacles (to prevent immediate overlap)
-    float min_obstacle_distance = 200.0; // Adjust as needed
+    // Variáveis para controlar a geração procedural de obstáculos
+    float proximo_ponto_spawn_obstaculo = LARGURA; // Onde o próximo obstáculo pode aparecer (coordenada de mundo)
+    float min_distancia_entre_obstaculos = 500.0;
+    float variacao_distancia_obstaculos = 600.0; // Distância aleatória adicional
 
+    // Posiciona os obstáculos iniciais de forma procedural
     for (int i = 0; i < MAX_OBSTACULOS; i++) {
-        obstaculos[i].ativa = true; // All obstacles start active for placement
+        obstaculos[i].ativa = true;
 
-        // Randomly choose an obstacle type
         int type_index = rand() % num_obstacle_types;
         obstaculos[i].sprite_bitmap = obstacle_types[type_index].sprite;
         obstaculos[i].only_crouch_pass = obstacle_types[type_index].crouch_pass;
@@ -509,87 +505,66 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
         obstaculos[i].width = original_width * current_scale;
         obstaculos[i].height = original_height * current_scale;
 
-        // Randomize X position
-        // Start placing obstacles after a certain distance from the player's initial position
-        // and within the background width, ensuring space between them.
-        float min_x = LARGURA + (i * 500); // Start further out for subsequent obstacles
-        float max_x = LARGURA + (i * 500) + 1000; // Spread them out
-        if (max_x > bg_width - obstaculos[i].width) { // Don't go off the map
-             max_x = bg_width - obstaculos[i].width;
-        }
-        if (min_x > max_x) min_x = LARGURA + (i * 200); // Ensure min_x is always less than max_x, for smaller maps
-
-        obstaculos[i].x = min_x + (float)rand() / RAND_MAX * (max_x - min_x);
-
-        // Ensure vertical alignment with the ground
+        // Posiciona o obstáculo à frente do último que foi posicionado
+        obstaculos[i].x = proximo_ponto_spawn_obstaculo + (float)rand() / RAND_MAX * variacao_distancia_obstaculos;
         obstaculos[i].y = personagem_y_base + (frame_altura * escala_personagens) - obstaculos[i].height;
 
-        // Adjust Traficante position if it overlaps with an obstacle during initialization
-        // This is a simple check; for more complex scenarios, you might need iterative placement.
-        if (traficante.ativa) {
-            float traficante_hb_x = traficante.x; // Simplified hitbox for placement check
-            float traficante_hb_y = traficante.y;
-            float traficante_hb_w = traficante.largura_sprite * escala_traficante;
-            float traficante_hb_h = traficante.altura_sprite * escala_traficante;
-
-            if (check_collision(obstaculos[i].x, obstaculos[i].y, obstaculos[i].width, obstaculos[i].height,
-                                 traficante_hb_x, traficante_hb_y, traficante_hb_w, traficante_hb_h)) {
-                // If collision, move the traficante slightly
-                traficante.x += obstaculos[i].width + min_obstacle_distance;
-                fprintf(stderr, "DEBUG: Traficante moved due to obstacle collision. New X: %.2f\n", traficante.x);
-            }
-        }
+        // Atualiza o ponto para o próximo spawn
+        proximo_ponto_spawn_obstaculo = obstaculos[i].x + obstaculos[i].width + min_distancia_entre_obstaculos;
     }
-    // --- END Obstacle Initialization ---
+    // --- FIM DA MODIFICAÇÃO DE INICIALIZAÇÃO DE OBSTÁCULOS ---
 
-    // --- NEW: Initialize Money Notes ---
+    // --- Inicialização de Notas de Dinheiro ---
     MoneyNote money_notes[MAX_MONEY_NOTES];
     ALLEGRO_BITMAP *money_sprites[] = {sprite_2reais, sprite_5reais, sprite_10reais};
     int money_values[] = {2, 5, 10};
     int num_money_types = sizeof(money_sprites) / sizeof(money_sprites[0]);
-    float time_to_spawn_money = MONEY_NOTE_SPAWN_INTERVAL;
+    float time_to_spawn_money = MONEY_NOTE_SPAWN_INTERVAL; // Tempo para o próximo spawn de dinheiro
 
     for (int i = 0; i < MAX_MONEY_NOTES; i++) {
         money_notes[i].ativa = false;
     }
-    // --- END NEW ---
+    // --- FIM NOVO ---
 
-
-    ALLEGRO_TIMER *timer = al_create_timer(1.0 / 60.0);
+    // --- Configuração do Timer do Jogo ---
+    ALLEGRO_TIMER *timer = al_create_timer(1.0 / 60.0); // 60 FPS
     al_start_timer(timer);
 
+    // --- Registro de Fontes de Eventos ---
     al_register_event_source(fila, al_get_display_event_source(janela));
     al_register_event_source(fila, al_get_keyboard_event_source());
     al_register_event_source(fila, al_get_timer_event_source(timer));
 
     bool jogando = true;
-    // int frame_count = 0; // Not used
 
+    // --- Loop Principal do Jogo ---
     while (jogando) {
         ALLEGRO_EVENT ev;
-        al_wait_for_event(fila, &ev);
+        al_wait_for_event(fila, &ev); // Espera por um evento
 
+        // --- Tratamento de Eventos da Janela ---
         if (ev.type == ALLEGRO_EVENT_DISPLAY_CLOSE) {
-            jogando = false;
+            jogando = false; // Sai do loop se a janela for fechada
         } else if (ev.type == ALLEGRO_EVENT_KEY_DOWN) {
-            // --- Protagonist cannot take actions if dying ---
+            // --- Protagonista não pode realizar ações se estiver morrendo ---
             if (protagonista_estado == PROT_MORRENDO) {
                 if (ev.keyboard.keycode == ALLEGRO_KEY_ESCAPE) jogando = false;
             }
-            // --- End Protagonist cannot take actions if dying ---
+            // --- Fim da restrição de ações ---
 
-            if (ev.keyboard.keycode == ALLEGRO_KEY_ESCAPE) { jogando = false; }
-            else if (protagonista_estado == PROT_NORMAL) { // Only allow actions if protagonist is normal
+            if (ev.keyboard.keycode == ALLEGRO_KEY_ESCAPE) {
+                jogando = false;
+            } else if (protagonista_estado == PROT_NORMAL) { // Só permite ações se o protagonista estiver normal
                 if (ev.keyboard.keycode == ALLEGRO_KEY_UP && !pulando && !agachando && !atacando && !arremessando) {
                     pulando = true; vel_y = -10.0; frame_pulando = 0; acc_pulando = 0; especial_ativo = false; especial_finalizado = false;
                     ALLEGRO_KEYBOARD_STATE estado; al_get_keyboard_state(&estado);
                     if (al_key_down(&estado, ALLEGRO_KEY_RIGHT)) vel_x_pulo = velocidade;
                     else if (al_key_down(&estado, ALLEGRO_KEY_LEFT)) vel_x_pulo = -velocidade;
                     else vel_x_pulo = 0;
-                    // When jumping, immediately set ground to base, unless we land on something else
+                    // Ao pular, imediatamente define o chão como a base, a menos que ele pouse em outra coisa
                     current_ground_y = personagem_y_base;
                 }
-                // When pressing DOWN, go into crouch state
+                // Ao pressionar DOWN, entra no estado de agachar
                 else if (ev.keyboard.keycode == ALLEGRO_KEY_DOWN && !pulando && !atacando && !arremessando) {
                     agachando = true; frame_agachado = 0; acc_agachado = 0; especial_ativo = false; especial_finalizado = false;
                     crouch_animation_finished = false; // Garante que a flag esteja falsa ao iniciar a animação
@@ -597,9 +572,9 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                 else if (ev.keyboard.keycode == ALLEGRO_KEY_Z && !pulando && !agachando && !especial_ativo && !atacando && !arremessando) { especial_ativo = true; especial_finalizado = false; frame_especial = 0; acc_especial = 0; }
                 else if (ev.keyboard.keycode == ALLEGRO_KEY_SPACE && especial_ativo && especial_finalizado && !atacando && !arremessando) { atacando = true; frame_ataque1 = 0; acc_ataque1 = 0; }
                 else if (ev.keyboard.keycode == ALLEGRO_KEY_Q && !agachando && !especial_ativo && !atacando && !arremessando) { arremessando = true; frame_arremesso = 0; acc_arremesso = 0; }
-                // --- 'B' Key for NPC Interaction ---
+                // --- Tecla 'B' para Interação com NPC ---
                 else if (ev.keyboard.keycode == ALLEGRO_KEY_B) {
-                    // Calculate protagonist's hitbox center (world coordinates)
+                    // Calcula o centro da hitbox do protagonista (coordenadas do mundo)
                     float prot_world_x_center = personagem_x + (frame_largura_parado * escala_personagens) / 2.0 + deslocamento_x;
                     float npc_world_x_center = traficante.x + (traficante.largura_sprite * escala_traficante) / 2.0;
 
@@ -607,13 +582,13 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
 
                     if (traficante.ativa && distance < NPC_INTERACTION_DISTANCE) {
                         if (player_money >= NPC_HEAL_COST) {
-                            // NEW: Check if protagonist health is already at or above the new maximum
-                            if (protagonist_health >= MAX_PROTAGONIST_HEALTH + NPC_HEAL_AMOUNT) { // Max 100 + 20 from one purchase
+                            // NOVO: Verifica se a vida do protagonista já está no máximo ou acima do novo máximo
+                            if (protagonist_health >= MAX_PROTAGONIST_HEALTH + NPC_HEAL_AMOUNT) { // Máximo 100 + 20 de uma compra
                                 fprintf(stderr, "DEBUG: Vida já está no máximo (120 HP)! Não é possível comprar mais pó.\n");
                             } else {
                                 player_money -= NPC_HEAL_COST;
                                 protagonist_health += NPC_HEAL_AMOUNT;
-                                // NEW: Cap health at 120 (MAX_PROTAGONIST_HEALTH + NPC_HEAL_AMOUNT)
+                                // NOVO: Limita a vida em 120 (MAX_PROTAGONIST_HEALTH + NPC_HEAL_AMOUNT)
                                 if (protagonist_health > MAX_PROTAGONIST_HEALTH + NPC_HEAL_AMOUNT) {
                                     protagonist_health = MAX_PROTAGONIST_HEALTH + NPC_HEAL_AMOUNT;
                                 }
@@ -624,21 +599,20 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                         }
                     }
                 }
-                // --- END NEW ---
+                // --- FIM NOVO ---
             }
         }
-        // When key is released, set a flag that the key is no longer pressed
+        // Quando a tecla é liberada, define uma flag para que a tecla não esteja mais pressionada
         else if (ev.type == ALLEGRO_EVENT_KEY_UP) {
             if (protagonista_estado == PROT_NORMAL) {
                 if (ev.keyboard.keycode == ALLEGRO_KEY_DOWN) {
-                    // 'agachando' is NOT set to false here directly.
-                    // It will only become false in the timer loop once animation finishes AND key is released.
+                    // 'agachando' NÃO é definido como falso aqui diretamente.
+                    // Ele só se tornará falso no loop do timer quando a animação terminar E a tecla for liberada.
                 }
             }
         }
-        
+    
         else if (ev.type == ALLEGRO_EVENT_TIMER) {
-            // frame_count++; // Not actively used, can remove or use for other purposes
             float delta_deslocamento_x = deslocamento_x - deslocamento_x_anterior;
             deslocamento_x_anterior = deslocamento_x;
 
@@ -646,10 +620,10 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
             al_get_keyboard_state(&estado);
             bool andando = false, correndo = false;
 
-            // --- Protagonist Movement Logic ---
+            // --- Lógica de Movimento do Protagonista ---
             float old_deslocamento_x_prot = deslocamento_x;
-            float old_personagem_x = personagem_x; // Store old x for collision rollback
-            float old_personagem_y = personagem_y; // Store old y for collision rollback
+            float old_personagem_x = personagem_x; // Armazena o X antigo para rollback de colisão
+            float old_personagem_y = personagem_y; // Armazena o Y antigo para rollback de colisão
 
             if (protagonista_estado == PROT_NORMAL) {
                 if (!atacando && (!especial_ativo || especial_finalizado) && !arremessando) {
@@ -657,13 +631,13 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                     if (!pulando) {
                         if (al_key_down(&estado, ALLEGRO_KEY_RIGHT)) {
                             deslocamento_x += velocidade;
-                            if (deslocamento_x >= bg_width) deslocamento_x -= bg_width;
+                            // Não faz wrap aqui para permitir o mundo infinito
                             andando = true;
                             if (velocidade == velocidade_correr) correndo = true;
                         }
                         if (al_key_down(&estado, ALLEGRO_KEY_LEFT)) {
                             deslocamento_x -= velocidade;
-                            if (deslocamento_x < 0) deslocamento_x += bg_width;
+                            // Não faz wrap aqui para permitir o mundo infinito
                             andando = true;
                             if (velocidade == velocidade_correr) correndo = true;
                         }
@@ -671,19 +645,19 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                 } else if (pulando) {
                     velocidade = (al_key_down(&estado, ALLEGRO_KEY_LSHIFT) || al_key_down(&estado, ALLEGRO_KEY_RSHIFT)) ? velocidade_correr : velocidade_andar;
                 }
-            } else {
+            } else { // Se o protagonista não está no estado NORMAL (ex: morrendo), reseta as ações
                 andando = false; correndo = false;
                 pulando = false; agachando = false; atacando = false; arremessando = false;
                 vel_y = 0; vel_x_pulo = 0;
                 especial_ativo = false; especial_finalizado = false;
                 frame_ataque1 = 0; acc_ataque1 = 0;
-                
-                frame_arremesso = 0; // Added this line to reset arremesso animation when dying
-                acc_arremesso = 0; // Added this line to reset arremesso animation when dying
+            
+                frame_arremesso = 0; // Reseta animação de arremesso ao morrer
+                acc_arremesso = 0; // Reseta acumulador de animação de arremesso ao morrer
             }
 
             if (protagonista_estado == PROT_NORMAL) {
-                // --- Invulnerability Timer Update ---
+                // --- Atualização do Temporizador de Invulnerabilidade ---
                 if (protagonist_invulnerable) {
                     protagonist_invulnerability_timer -= 1.0 / 60.0;
                     protagonist_blink_timer += 1.0 / 60.0;
@@ -696,22 +670,21 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                         protagonist_visible = true;
                     }
                 }
-                // --- END NEW ---
+                // --- FIM NOVO ---
 
                 if (pulando) {
                     personagem_y += vel_y;
                     vel_y += gravidade;
                     deslocamento_x += vel_x_pulo;
-                    if (deslocamento_x >= bg_width) deslocamento_x -= bg_width;
-                    if (deslocamento_x < 0) deslocamento_x += bg_width;
+                    // Não faz wrap aqui para permitir o mundo infinito
 
-                    // Check for landing on base ground
+                    // Verifica se aterrissou no chão base
                     if (personagem_y >= personagem_y_base && vel_y >= 0) {
                         personagem_y = personagem_y_base;
                         pulando = false;
                         vel_y = 0;
                         vel_x_pulo = 0;
-                        current_ground_y = personagem_y_base; // Landed on base ground
+                        current_ground_y = personagem_y_base; // Aterrissou no chão base
                     }
 
                     acc_pulando += 1.0 / 60.0; if (acc_pulando >= tpf_pulando) { acc_pulando -= tpf_pulando; if (frame_pulando < frame_total_pulando - 1) frame_pulando++; }
@@ -722,7 +695,7 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                         if (frame_agachado < frame_total_agachado - 1) {
                             frame_agachado++;
                         } else {
-                            // Animation finished.
+                            // Animação finalizada.
                             crouch_animation_finished = true; // Seta a flag para indicar que a animação terminou
                             frame_agachado = frame_total_agachado - 1; // Trava no último frame
                         }
@@ -745,22 +718,22 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                     acc_especial += 1.0 / 60.0; if (acc_especial >= tpf_especial) { acc_especial -= tpf_especial; if (frame_especial < frame_total_especial - 1) { frame_especial++; } else { especial_finalizado = true; } }
                     frame_parado = 0; acc_parado = 0; frame_andando = 0; acc_andando = 0; frame_correndo = 0; acc_correndo = 0; frame_pulando = 0; acc_pulando = 0; frame_agachado = 0; acc_agachado = 0; atacando = false; acc_ataque1 = 0; frame_ataque1 = 0; arremessando = false; acc_arremesso = 0; frame_arremesso = 0;
                 } else if (arremessando) {
-                    acc_arremesso += 1.0 / 60.0; if (acc_arremesso >= tpf_arremesso) { acc_arremesso -= tpf_arremesso; if (frame_arremesso < frame_total_arremesso - 1) { frame_arremesso++; } else { arremessando = false; for (int i = 0; i < MAX_GARRAFAS; i++) { if (!garrafas[i].ativa) { garrafas[i].x = personagem_x + (frame_largura_arremesso * escala_personagens) / 2.0; garrafas[i].y = personagem_y + (frame_altura * escala_personagens) / 2.0; garrafas[i].vel_x = 15.0; garrafas[i].ativa = true; garrafas[i].angulo = 0.0; break; } } frame_arremesso = 0; } }
+                    acc_arremesso += 1.0 / 60.0; if (acc_arremesso >= tpf_arremesso) { acc_arremesso -= tpf_arremesso; if (frame_arremesso < frame_total_arremesso - 1) { frame_arremesso++; } else { arremessando = false; for (int i = 0; i < MAX_GARRAFAS; i++) { if (!garrafas[i].ativa) { garrafas[i].x = personagem_x + (frame_largura_arremesso * escala_personagens) / 2.0 + deslocamento_x; garrafas[i].y = personagem_y + (frame_altura * escala_personagens) / 2.0; garrafas[i].vel_x = 15.0; garrafas[i].ativa = true; garrafas[i].angulo = 0.0; break; } } frame_arremesso = 0; } }
                     frame_parado = 0; acc_parado = 0; frame_andando = 0; acc_andando = 0; frame_correndo = 0; acc_correndo = 0; frame_agachado = 0; acc_agachado = 0; atacando = false; acc_ataque1 = 0; frame_ataque1 = 0;
                 } else {
-                    // Apply gravity even when not "jumping" to fall from obstacles
+                    // Aplica gravidade mesmo quando não está "pulando" para cair de obstáculos
                     if (personagem_y < current_ground_y) {
                         personagem_y += gravidade * 8;
-                        // Clamp to current_ground_y if it overshoots
+                        // Prende a current_ground_y se ultrapassar
                         if (personagem_y > current_ground_y) {
                             personagem_y = current_ground_y;
                             vel_y = 0;
                         }
-                    } else if (personagem_y > current_ground_y) { // If somehow below, snap to ground
-                         personagem_y = current_ground_y;
-                         vel_y = 0;
+                    } else if (personagem_y > current_ground_y) { // Se de alguma forma estiver abaixo, ajusta para o chão
+                            personagem_y = current_ground_y;
+                            vel_y = 0;
                     }
-                    
+                
                     if (andando) {
                         if (correndo) { acc_correndo += 1.0 / 60.0; if (acc_correndo >= tpf_correndo) { acc_correndo -= tpf_correndo; frame_correndo = (frame_correndo + 1) % frame_total_correndo; } frame_andando = 0; acc_andando = 0; frame_parado = 0; acc_parado = 0; }
                         else { acc_andando += 1.0 / 60.0; if (acc_andando >= tpf_andando) { acc_andando -= tpf_andando; frame_andando = (frame_andando + 1) % frame_total_andando; } frame_correndo = 0; acc_correndo = 0; frame_parado = 0; acc_parado = 0; }
@@ -774,12 +747,12 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                         personagem_frame_morte++;
                     } else {
                         personagem_morte_animacao_finalizada = true;
-                        jogando = false;
+                        jogando = false; // Encerra o jogo após a animação de morte
                     }
                 }
             }
 
-            // --- Update NPC Animation Timer ---
+            // --- Atualiza Temporizador de Animação do NPC ---
             if (traficante.ativa) {
                 traficante.acc_animacao += 1.0 / 60.0;
                 if (traficante.acc_animacao >= NPC_TRAFICANTE_TPF) {
@@ -787,11 +760,11 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                     traficante.frame_atual = (traficante.frame_atual + 1) % NPC_TRAFICANTE_FRAME_COUNT;
                 }
             }
-            // --- END NEW ---
+            // --- FIM NOVO ---
 
-            // --- Update NPC Audio Volume (Fade) ---
+            // --- Atualiza Volume do Áudio do NPC (Fade) ---
             if (traficante.ativa && instancia_som_verdebalaraio) {
-                // Calculate protagonist's hitbox center (world coordinates)
+                // Calcula o centro da hitbox do protagonista (coordenadas do mundo)
                 float prot_world_x_center = personagem_x + (frame_largura_parado * escala_personagens) / 2.0 + deslocamento_x;
                 float npc_world_x_center = traficante.x + (traficante.largura_sprite * escala_traficante) / 2.0;
 
@@ -799,34 +772,45 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                 float volume;
 
                 if (distance <= AUDIO_MIN_DISTANCE) {
-                    volume = 1.0; // Full volume
+                    volume = 1.0; // Volume total
                 } else if (distance >= AUDIO_MAX_DISTANCE) {
-                    volume = 0.0; // Muted
+                    volume = 0.0; // Mudo
                 } else {
-                    // Linear interpolation: volume decreases as distance increases
+                    // Interpolação linear: o volume diminui à medida que a distância aumenta
                     volume = 1.0 - ((distance - AUDIO_MIN_DISTANCE) / (AUDIO_MAX_DISTANCE - AUDIO_MIN_DISTANCE));
-                    if (volume < 0.0) volume = 0.0; // Clamp to 0
-                    if (volume > 1.0) volume = 1.0; // Clamp to 1
+                    if (volume < 0.0) volume = 0.0; // Limita a 0
+                    if (volume > 1.0) volume = 1.0; // Limita a 1
                 }
                 al_set_sample_instance_gain(instancia_som_verdebalaraio, volume);
             }
-            // --- END NEW ---
+            // --- FIM NOVO ---
 
-
+            // --- Atualização de Garrafas ---
             for (int i = 0; i < MAX_GARRAFAS; i++) {
-                if (garrafas[i].ativa) { garrafas[i].x += garrafas[i].vel_x; garrafas[i].angulo += garrafa_velocidade_angular;
-                    if (garrafas[i].angulo > ALLEGRO_PI * 2) { garrafas[i].angulo -= ALLEGRO_PI * 2; }
-                    if (garrafas[i].x > LARGURA + (garrafa_largura_original * escala_garrafa)) { garrafas[i].ativa = false; } }
+                if (garrafas[i].ativa) {
+                    // Garrafas se movem no mundo, e sua posição 'x' é uma coordenada de mundo.
+                    // O desenho já compensa o scroll.
+                    garrafas[i].x += garrafas[i].vel_x; 
+                    garrafas[i].angulo += garrafa_velocidade_angular;
+                    if (garrafas[i].angulo > ALLEGRO_PI * 2) { // Normaliza o ângulo
+                        garrafas[i].angulo -= ALLEGRO_PI * 2;
+                    }
+                    // Desativa se sair da tela (à direita, em relação ao scroll)
+                    if (garrafas[i].x - deslocamento_x > LARGURA + (garrafa_largura_original * escala_garrafa)) {
+                        garrafas[i].ativa = false;
+                    }
+                }
             }
 
-            // --- Enemy Spawn Logic ---
+            // --- Lógica de Spawn de Inimigos ---
             tempo_para_spawn_inimigo -= 1.0 / 60.0;
             if (tempo_para_spawn_inimigo <= 0) {
                 for (int i = 0; i < MAX_INIMIGOS; i++) {
                     if (!inimigos[i].ativa) {
-                        inimigos[i].x = LARGURA + (float)(rand() % 200 + 50);
+                        // Inimigo nasce fora da tela à direita, com posição no mundo (deslocamento_x da câmera + largura da tela + offset)
+                        inimigos[i].x = deslocamento_x + LARGURA + (float)(rand() % 200 + 50); 
                         inimigos[i].y = personagem_y_base;
-                        inimigos[i].vel_x = inimigo_velocidade_parado_base;
+                        inimigos[i].vel_x = inimigo_velocidade_parado_base; // Começa parado ou movendo lentamente para a esquerda
                         inimigos[i].ativa = true;
                         // --- Reset completo no SPAWN ---
                         inimigos[i].frame_atual = 0;
@@ -835,18 +819,18 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                         inimigos[i].animacao_morte_finalizada = false;
                         inimigos[i].inimigo_pode_dar_dano = true;
                         // --- Fim do reset no SPAWN ---
-                        
+                    
                         tempo_para_spawn_inimigo = min_intervalo_spawn_inimigo +
-                                                     ((float)rand() / RAND_MAX) * (max_intervalo_spawn_inimigo - min_intervalo_spawn_inimigo);
+                                                 ((float)rand() / RAND_MAX) * (max_intervalo_spawn_inimigo - min_intervalo_spawn_inimigo);
                         fprintf(stderr, "DEBUG: Inimigo %d SPAWNADO em (%.2f, %.2f) com vel_x_base: %.2f. Próximo spawn em: %.2f. Estado: %d\n",
-                                         i, inimigos[i].x, inimigos[i].y, inimigos[i].vel_x, tempo_para_spawn_inimigo, inimigos[i].estado);
+                                i, inimigos[i].x, inimigos[i].y, inimigos[i].vel_x, tempo_para_spawn_inimigo, inimigos[i].estado);
                         break;
                     }
                 }
             }
-            // --- End Enemy Spawn Logic ---
+            // --- Fim da Lógica de Spawn de Inimigos ---
 
-            // --- NEW: Money Note Spawn Logic ---
+            // --- NOVO: Lógica de Spawn de Notas de Dinheiro ---
             time_to_spawn_money -= 1.0 / 60.0;
             if (time_to_spawn_money <= 0) {
                 for (int i = 0; i < MAX_MONEY_NOTES; i++) {
@@ -856,10 +840,11 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                         money_notes[i].value = money_values[type_index];
                         money_notes[i].hitbox_width = al_get_bitmap_width(money_notes[i].sprite_bitmap) * MONEY_NOTE_SCALE;
                         money_notes[i].hitbox_height = al_get_bitmap_height(money_notes[i].sprite_bitmap) * MONEY_NOTE_SCALE;
-                        
-                        money_notes[i].x = LARGURA + (float)(rand() % 400 + 100); // Spawn off-screen right
-                        money_notes[i].y = personagem_y_base + (frame_altura * escala_personagens) - money_notes[i].hitbox_height; // On the ground
+                    
+                        money_notes[i].x = deslocamento_x + LARGURA + (float)(rand() % 400 + 100); // Spawn off-screen right
+                        money_notes[i].y = personagem_y_base + (frame_altura * escala_personagens) - money_notes[i].hitbox_height; // No chão
                         money_notes[i].ativa = true;
+                        money_notes[i].spawn_time = al_get_time(); // Registra o tempo de spawn
                         time_to_spawn_money = MONEY_NOTE_SPAWN_INTERVAL;
                         fprintf(stderr, "DEBUG: Nota de R$%d SPAWNADA em (%.2f, %.2f).\n", money_notes[i].value, money_notes[i].x, money_notes[i].y);
                         break;
@@ -867,41 +852,109 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                 }
             }
 
-            // --- Update Money Notes Position and Lifetime ---
+            // --- Atualiza Posição e Tempo de Vida das Notas de Dinheiro ---
             for (int i = 0; i < MAX_MONEY_NOTES; i++) {
                 if (money_notes[i].ativa) {
-                    money_notes[i].x -= delta_deslocamento_x; // Move with the background scroll
-                    // Despawn if off-screen left
-                    if (money_notes[i].x < -money_notes[i].hitbox_width) {
+                    // Notas de dinheiro têm sua posição no mundo (x) e são desenhadas com o offset do scroll.
+                    // Não precisam de ajuste aqui, o desenho já compensa pelo scroll.
+                    // FIM CORRIGIDO
+                    // Despawn se sair da tela à esquerda ou se o tempo de vida expirou
+                    if (money_notes[i].x - deslocamento_x < -money_notes[i].hitbox_width ||
+                        (al_get_time() - money_notes[i].spawn_time > MONEY_NOTE_LIFETIME)) {
                         money_notes[i].ativa = false;
-                        fprintf(stderr, "DEBUG: Nota de dinheiro desativada (fora da tela).\n");
+                        fprintf(stderr, "DEBUG: Nota de dinheiro desativada (fora da tela ou tempo de vida expirou).\n");
                     }
                 }
             }
-            // --- END NEW ---
+            // --- FIM NOVO ---
 
-            // --- Update Enemies States, Movement, and Check Collisions ---
-            // float protagonist_center_x = personagem_x + (frame_largura_parado * escala_personagens) / 2.0; // Not used
+            // --- NOVO: Lógica para reciclar objetos do mundo (Obstáculos e NPC) ---
+            // Encontra a coordenada X mais distante dos objetos atualmente ativos
+            float max_x_existente = deslocamento_x + LARGURA; // Começa na borda direita da tela
 
-            // Calculate protagonist's hitbox for collision checks
+            for(int i = 0; i < MAX_OBSTACULOS; i++) {
+                if (obstaculos[i].ativa && obstaculos[i].x > max_x_existente) {
+                    max_x_existente = obstaculos[i].x;
+                }
+            }
+            if (traficante.ativa && traficante.x > max_x_existente) {
+                max_x_existente = traficante.x;
+            }
+            for (int i = 0; i < MAX_INIMIGOS; i++) {
+                if (inimigos[i].ativa && inimigos[i].x > max_x_existente) {
+                    max_x_existente = inimigos[i].x;
+                }
+            }
+            for (int i = 0; i < MAX_MONEY_NOTES; i++) {
+                if (money_notes[i].ativa && money_notes[i].x > max_x_existente) {
+                    max_x_existente = money_notes[i].x;
+                }
+            }
+
+            // Recicla obstáculos que saíram da tela à esquerda
+            for (int i = 0; i < MAX_OBSTACULOS; i++) {
+                if (obstaculos[i].ativa && (obstaculos[i].x + obstaculos[i].width) < deslocamento_x - LARGURA / 2) { // Considera um pouco mais para garantir que está fora
+                    fprintf(stderr, "DEBUG: Reciclando obstaculo %d.\n", i);
+                    int type_index = rand() % num_obstacle_types;
+                    obstaculos[i].sprite_bitmap = obstacle_types[type_index].sprite;
+                    obstaculos[i].only_crouch_pass = obstacle_types[type_index].crouch_pass;
+                    float current_scale = obstacle_types[type_index].scale;
+                    obstaculos[i].width = al_get_bitmap_width(obstaculos[i].sprite_bitmap) * current_scale;
+                    obstaculos[i].height = al_get_bitmap_height(obstaculos[i].sprite_bitmap) * current_scale;
+                    // Reposiciona o obstáculo bem à frente do objeto mais distante
+                    obstaculos[i].x = max_x_existente + min_distancia_entre_obstaculos + (float)rand() / RAND_MAX * variacao_distancia_obstaculos;
+                    obstaculos[i].y = personagem_y_base + (frame_altura * escala_personagens) - obstaculos[i].height;
+                    obstaculos[i].ativa = true; // Garante que está ativo novamente
+                }
+            }
+
+            // Recicla o traficante se ele sair da tela à esquerda
+            if (traficante.ativa && (traficante.x + traficante.largura_sprite * escala_traficante) < deslocamento_x - LARGURA / 2) {
+                fprintf(stderr, "DEBUG: Reciclando traficante.\n");
+                traficante.x = max_x_existente + 8000 + (rand() % 5000); // Reposiciona muito à frente
+            }
+
+            // Recicla inimigos que saíram da tela à esquerda
+            for (int i = 0; i < MAX_INIMIGOS; i++) {
+                if (inimigos[i].ativa && (inimigos[i].x + inimigo_largura_sprite_max * escala_personagens) < deslocamento_x - LARGURA / 2) {
+                    fprintf(stderr, "DEBUG: Inimigo %d DESATIVADO (saiu da tela à esquerda).\n", i);
+                    inimigos[i].ativa = false;
+                    inimigos[i].estado = INIMIGO_PARADO; // Reseta estado
+                    inimigos[i].vel_x = inimigo_velocidade_parado_base;
+                    inimigos[i].animacao_morte_finalizada = false;
+                    inimigos[i].frame_atual = 0;
+                    inimigos[i].acc_animacao = 0;
+                    inimigos[i].inimigo_pode_dar_dano = true;
+                }
+            }
+
+            // Recicla notas de dinheiro que saíram da tela à esquerda ou expiraram
+            for (int i = 0; i < MAX_MONEY_NOTES; i++) {
+                if (money_notes[i].ativa && (money_notes[i].x + money_notes[i].hitbox_width) < deslocamento_x - LARGURA / 2) {
+                        money_notes[i].ativa = false;
+                        fprintf(stderr, "DEBUG: Nota de dinheiro desativada (fora da tela à esquerda).\n");
+                }
+            }
+            // --- FIM DA LÓGICA DE RECICLAGEM ---
+
+
+            // --- Atualiza Estados, Movimento e Verifica Colisões dos Inimigos ---
+            // Calcula a hitbox do protagonista para verificações de colisão
             float prot_hb_x = personagem_x + prot_hitbox_offset_x;
             float prot_hb_y = personagem_y + prot_hitbox_offset_y;
             float prot_hb_w = prot_hitbox_width;
-            // float prot_hb_h = prot_hitbox_height; // No longer directly used, use current_prot_hitbox_height
 
-            // Adjust protagonist hitbox height if crouching for collision
+            // Ajusta a altura da hitbox do protagonista se estiver agachado
             float current_prot_hitbox_height = prot_hitbox_height;
             if (agachando) {
                 current_prot_hitbox_height = prot_crouch_hitbox_height;
-                // Also adjust the Y position of the hitbox so it stays on the ground
-                // This means the top of the hitbox moves down
+                // Ajusta também a posição Y da hitbox para que ela permaneça no chão
                 prot_hb_y = personagem_y + (prot_hitbox_height - prot_crouch_hitbox_height) + prot_hitbox_offset_y;
             } else {
-                 prot_hb_y = personagem_y + prot_hitbox_offset_y; // Reset if not crouching
+                prot_hb_y = personagem_y + prot_hitbox_offset_y; // Reseta se não estiver agachado
             }
 
-
-            // Calculate protagonist's ATTACK hitbox for collision checks
+            // Calcula a hitbox de ATAQUE do protagonista para verificações de colisão
             float prot_attack_hb_x = personagem_x + prot_attack_hitbox_offset_x;
             float prot_attack_hb_y = personagem_y + prot_attack_hitbox_offset_y;
             float prot_attack_hb_w = prot_attack_hitbox_width;
@@ -911,63 +964,65 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                 if (inimigos[i].ativa) {
                     float inimigo_x_antes_movimento = inimigos[i].x;
 
-                    float inimigo_vx_total_no_frame = inimigos[i].vel_x + (-delta_deslocamento_x);
-                    inimigos[i].x += inimigo_vx_total_no_frame;
+                    // INIMIGO SE MOVE NO MUNDO: Apenas atualiza sua posição X baseada em sua velocidade
+                    inimigos[i].x += inimigos[i].vel_x; 
                     
-                    float inimigo_current_hb_x = inimigos[i].x + inimigos[i].hitbox_offset_x;
-                    float inimigo_current_hb_y = inimigos[i].y + inimigos[i].hitbox_offset_y;
-                    float inimigo_current_hb_w = inimigos[i].hitbox_width;
-                    float inimigo_current_hb_h = inimigos[i].hitbox_height;
+                    // =========================================================================
+                    // INÍCIO DA CORREÇÃO PRINCIPAL
+                    // =========================================================================
+                    
+                    // Hitbox do inimigo em coordenadas de TELA (para colisão com protagonista)
+                    float inimigo_screen_x = inimigos[i].x - deslocamento_x;
+                    float inimigo_screen_hb_x = inimigo_screen_x + inimigos[i].hitbox_offset_x;
+                    float inimigo_hb_y = inimigos[i].y + inimigos[i].hitbox_offset_y;
+                    float inimigo_hb_w = inimigos[i].hitbox_width;
+                    float inimigo_hb_h = inimigos[i].hitbox_height;
 
+                    // Hitbox do inimigo em coordenadas de MUNDO (para colisões com outros inimigos)
+                    float inimigo_world_hb_x = inimigos[i].x + inimigos[i].hitbox_offset_x;
 
-                    // --- Collision: Protagonist Attack vs Enemy ---
+                    // --- Colisão: Ataque do Protagonista vs Inimigo ---
                     if (atacando && inimigos[i].estado != INIMIGO_MORRENDO) {
+                        // USA HITBOX DE TELA DO INIMIGO
                         if (check_collision(prot_attack_hb_x, prot_attack_hb_y, prot_attack_hb_w, prot_attack_hb_h,
-                                             inimigo_current_hb_x, inimigo_current_hb_y, inimigo_current_hb_w, inimigo_current_hb_h)) {
+                                            inimigo_screen_hb_x, inimigo_hb_y, inimigo_hb_w, inimigo_hb_h)) {
                             fprintf(stderr, "COLISÃO! Ataque Especial atingiu Inimigo %d! Iniciando animação de morte.\n", i);
                             inimigos[i].estado = INIMIGO_MORRENDO;
-                            inimigos[i].vel_x = 0;
+                            inimigos[i].vel_x = 0; // Para o inimigo ao morrer
                             inimigos[i].frame_atual = 0;
                             inimigos[i].acc_animacao = 0;
                             inimigos[i].animacao_morte_finalizada = false;
                         }
                     }
-                    // --- END Collision: Protagonist Attack vs Enemy ---
+                    // --- FIM Colisão: Ataque do Protagonista vs Inimigo ---
 
 
                     // --- Colisão com Protagonista: Lógica de Bloqueio e Ataque ---
                     if (inimigos[i].estado != INIMIGO_MORRENDO && protagonista_estado == PROT_NORMAL) {
-                        // Use the adjusted protagonist hitbox for enemy collisions
-                        if (check_collision(inimigo_current_hb_x, inimigo_current_hb_y, inimigo_current_hb_w, inimigo_current_hb_h,
-                                             prot_hb_x, prot_hb_y, prot_hb_w, current_prot_hitbox_height)) {
-                            
+                        // USA HITBOX DE TELA DO INIMIGO para verificar colisão
+                        if (check_collision(inimigo_screen_hb_x, inimigo_hb_y, inimigo_hb_w, inimigo_hb_h,
+                                            prot_hb_x, prot_hb_y, prot_hb_w, current_prot_hitbox_height)) {
+                        
+                            // Reverte o movimento do MUNDO se o inimigo colidiu com o protagonista (para impedir atravessar)
                             deslocamento_x = old_deslocamento_x_prot;
-                            
+                            inimigos[i].x = inimigo_x_antes_movimento; // Reverte o movimento do próprio inimigo também
+                        
+                            // Recalcula delta_deslocamento_x_anterior após o rollback
                             delta_deslocamento_x = deslocamento_x - deslocamento_x_anterior;
                             deslocamento_x_anterior = deslocamento_x;
-
-                            inimigos[i].x = inimigo_x_antes_movimento;
                             
-                            float dist_to_protagonist_x = fabs( inimigo_current_hb_x - prot_hb_x);
-
-                            if (dist_to_protagonist_x < inimigo_distancia_ataque && inimigos[i].estado != INIMIGO_ATACANDO) {
-                                fprintf(stderr, "COLISÃO! Inimigo %d atingiu Protagonista! Iniciando ataque do INIMIGO.\n", i);
-                                inimigos[i].estado = INIMIGO_ATACANDO;
-                                inimigos[i].vel_x = inimigo_velocidade_ataque_base;
-                                inimigos[i].frame_atual = 0;
-                                inimigos[i].acc_animacao = 0;
-                                inimigos[i].inimigo_pode_dar_dano = true;
-                            }
-                            
+                            // APLICAR DANO AQUI: SE o inimigo está ATACANDO E PODE DAR DANO E protagonista NÃO está invulnerável
+                            // Esta checagem agora funciona porque a colisão é detectada corretamente.
                             if (inimigos[i].estado == INIMIGO_ATACANDO && inimigos[i].inimigo_pode_dar_dano && !protagonist_invulnerable) {
                                 protagonist_health -= PROTAGONIST_DAMAGE_PER_HIT;
-                                inimigos[i].inimigo_pode_dar_dano = false;
+                                inimigos[i].inimigo_pode_dar_dano = false; // Aplica o dano UMA VEZ por este ataque
                                 fprintf(stderr, "PROTAGONISTA SOFREU DANO! Vida restante: %d\n", protagonist_health);
 
+                                // Ativa invulnerabilidade para o protagonista
                                 protagonist_invulnerable = true;
                                 protagonist_invulnerability_timer = PROTAGONIST_INVULNERABILITY_DURATION;
                                 protagonist_blink_timer = 0.0;
-                                protagonist_visible = false;
+                                protagonist_visible = false; // Começa a piscar
 
                                 if (protagonist_health <= 0) {
                                     protagonista_estado = PROT_MORRENDO;
@@ -977,34 +1032,36 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                                     fprintf(stderr, "PROTAGONISTA MORREU! Iniciando animação de morte do protagonista.\n");
                                 }
                             }
-                        } else {
-                            inimigos[i].inimigo_pode_dar_dano = true;
-                        }
+                        } 
                     }
                     // --- FIM Colisão com Protagonista ---
-
+                    
+                    // =========================================================================
+                    // FIM DA CORREÇÃO PRINCIPAL
+                    // =========================================================================
 
                     // --- Lógica de Bloqueio (Não atravessar outros inimigos) ---
                     if (inimigos[i].estado != INIMIGO_MORRENDO) {
                         for (int k = 0; k < MAX_INIMIGOS; k++) {
-                            if (i == k) continue;
+                            if (i == k) continue; // Não verifica colisão consigo mesmo
                             if (inimigos[k].ativa && inimigos[k].estado != INIMIGO_MORRENDO) {
-                                float other_inimigo_hb_x = inimigos[k].x + inimigos[k].hitbox_offset_x;
+                                // USA HITBOX DE MUNDO para colisão inimigo-inimigo
+                                float other_inimigo_world_hb_x = inimigos[k].x + inimigos[k].hitbox_offset_x;
                                 float other_inimigo_hb_y = inimigos[k].y + inimigos[k].hitbox_offset_y;
                                 float other_inimigo_hb_w = inimigos[k].hitbox_width;
                                 float other_inimigo_hb_h = inimigos[k].hitbox_height;
 
-                                if (check_collision(inimigo_current_hb_x, inimigo_current_hb_y, inimigo_current_hb_w, inimigo_current_hb_h,
-                                                     other_inimigo_hb_x, other_inimigo_hb_y, other_inimigo_hb_w, other_inimigo_hb_h)) {
+                                if (check_collision(inimigo_world_hb_x, inimigo_hb_y, inimigo_hb_w, inimigo_hb_h,
+                                                    other_inimigo_world_hb_x, other_inimigo_hb_y, other_inimigo_hb_w, other_inimigo_hb_h)) {
                                     float overlap_amount = 0;
-                                    if (inimigo_current_hb_x < other_inimigo_hb_x) {
-                                        overlap_amount = (inimigo_current_hb_x + inimigo_current_hb_w) - other_inimigo_hb_x;
-                                        inimigos[i].x -= overlap_amount;
+                                    if (inimigo_world_hb_x < other_inimigo_world_hb_x) {
+                                        overlap_amount = (inimigo_world_hb_x + inimigo_hb_w) - other_inimigo_world_hb_x;
+                                        inimigos[i].x -= overlap_amount; // Move para trás
                                     } else {
-                                        overlap_amount = (other_inimigo_hb_x + other_inimigo_hb_w) - inimigo_current_hb_x;
-                                        inimigos[i].x += overlap_amount;
+                                        overlap_amount = (other_inimigo_world_hb_x + other_inimigo_hb_w) - inimigo_world_hb_x;
+                                        inimigos[i].x += overlap_amount; // Move para frente
                                     }
-                                    inimigo_current_hb_x = inimigos[i].x + inimigos[i].hitbox_offset_x;
+                                    inimigo_world_hb_x = inimigos[i].x + inimigos[i].hitbox_offset_x; // Atualiza hitbox X do mundo
                                 }
                             }
                         }
@@ -1012,57 +1069,51 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                     // --- FIM Lógica de Bloqueio entre Inimigos ---
 
 
-                    // Calculate distance to protagonist (for detection to chase)
-                    float dist_to_protagonist_x = fabs( inimigo_current_hb_x - prot_hb_x);
+                    // Calcula a distância para o protagonista (para detecção e perseguição)
+                    // Esta lógica continua usando coordenadas de MUNDO, o que está CORRETO.
+                    float prot_world_x_center_hb = (personagem_x + prot_hitbox_offset_x + prot_hitbox_width / 2.0) + deslocamento_x;
+                    float inimigo_world_x_center_hb = inimigo_world_hb_x + inimigo_hb_w / 2.0;
+                    float dist_to_protagonist_center_x = fabs( inimigo_world_x_center_hb - prot_world_x_center_hb);
 
-                    // --- State Transition Logic (Chase, Attack) ---
+                    // --- Lógica de Transição de Estado do Inimigo (Corrigida e Prioritária) ---
                     if (inimigos[i].estado != INIMIGO_MORRENDO) {
-                        if (inimigos[i].estado == INIMIGO_ATACANDO) {
-                            inimigos[i].vel_x = inimigo_velocidade_ataque_base;
-                            if (dist_to_protagonist_x > inimigo_distancia_ataque) {
-                                fprintf(stderr, "DEBUG: Inimigo %d saiu do alcance de ataque. Voltando para ANDANDO.\n", i);
-                                inimigos[i].estado = INIMIGO_ANDANDO;
-                                inimigos[i].vel_x = inimigo_velocidade_andando_base;
-                                inimigos[i].frame_atual = 0;
+                        // PRIORIDADE 1: ATACAR se estiver no alcance de ataque
+                        if (dist_to_protagonist_center_x <= inimigo_distancia_ataque) {
+                            if (inimigos[i].estado != INIMIGO_ATACANDO) {
+                                fprintf(stderr, "DEBUG: Inimigo %d no alcance de ataque. Mudando para ATACANDO.\n", i);
+                                inimigos[i].estado = INIMIGO_ATACANDO;
+                                inimigos[i].vel_x = inimigo_velocidade_ataque_base; // Para ao atacar
+                                inimigos[i].frame_atual = 0; // Reinicia animação de ataque
                                 inimigos[i].acc_animacao = 0;
+                                inimigos[i].inimigo_pode_dar_dano = true; // Permite dar dano ao iniciar a animação
                             }
-                        }
-                        else if (inimigos[i].estado == INIMIGO_ANDANDO) {
-                            inimigos[i].vel_x = inimigo_velocidade_andando_base;
-                            if (dist_to_protagonist_x >= inimigo_distancia_deteccao) {
-                                fprintf(stderr, "DEBUG: Inimigo %d saiu do alcance de detecção. Voltando para PARADO.\n", i);
-                                inimigos[i].estado = INIMIGO_PARADO;
-                                inimigos[i].vel_x = inimigo_velocidade_parado_base;
-                                inimigos[i].frame_atual = 0;
-                                inimigos[i].acc_animacao = 0;
-                            } else if (dist_to_protagonist_x <= inimigo_distancia_ataque) {
-                                 fprintf(stderr, "DEBUG: Inimigo %d no alcance de ataque. Mudando para ATACANDO.\n", i);
-                                 inimigos[i].estado = INIMIGO_ATACANDO;
-                                 inimigos[i].vel_x = inimigo_velocidade_ataque_base;
-                                 inimigos[i].frame_atual = 0;
-                                 inimigos[i].acc_animacao = 0;
-                            }
-                        }
-                        else if (inimigos[i].estado == INIMIGO_PARADO) {
-                            inimigos[i].vel_x = inimigo_velocidade_parado_base;
-                            if (dist_to_protagonist_x < inimigo_distancia_deteccao && dist_to_protagonist_x > inimigo_distancia_ataque) {
+                        } 
+                        // PRIORIDADE 2: ANDAR se estiver no alcance de detecção (mas fora do ataque)
+                        else if (dist_to_protagonist_center_x < inimigo_distancia_deteccao) {
+                            if (inimigos[i].estado != INIMIGO_ANDANDO) {
                                 fprintf(stderr, "DEBUG: Inimigo %d detectou. Mudando para ANDANDO.\n", i);
                                 inimigos[i].estado = INIMIGO_ANDANDO;
-                                inimigos[i].vel_x = inimigo_velocidade_andando_base;
-                                inimigos[i].frame_atual = 0;
+                                inimigos[i].vel_x = inimigo_velocidade_andando_base; // Inimigo anda
+                                inimigos[i].frame_atual = 0; // Reinicia animação de andar
                                 inimigos[i].acc_animacao = 0;
-                            } else if (dist_to_protagonist_x <= inimigo_distancia_ataque) {
-                                 fprintf(stderr, "DEBUG: Inimigo %d no alcance de ataque. Mudando para ATACANDO (do PARADO).\n", i);
-                                 inimigos[i].estado = INIMIGO_ATACANDO;
-                                 inimigos[i].vel_x = inimigo_velocidade_ataque_base;
-                                 inimigos[i].frame_atual = 0;
-                                 inimigos[i].acc_animacao = 0;
+                                // inimigo_pode_dar_dano não precisa ser resetado aqui, só no ataque
+                            }
+                        } 
+                        // PRIORIDADE 3: PARADO se estiver fora de ambos os alcances
+                        else { 
+                            if (inimigos[i].estado != INIMIGO_PARADO) {
+                                fprintf(stderr, "DEBUG: Inimigo %d saiu do alcance de detecção. Voltando para PARADO.\n", i);
+                                inimigos[i].estado = INIMIGO_PARADO;
+                                inimigos[i].vel_x = inimigo_velocidade_parado_base; // Inimigo para
+                                inimigos[i].frame_atual = 0; // Reinicia animação de parado
+                                inimigos[i].acc_animacao = 0;
+                                // inimigo_pode_dar_dano não precisa ser resetado aqui, só no ataque
                             }
                         }
                     }
                     // --- FIM Lógica de Transição de Estado do Inimigo ---
-                    
-                    // Update enemy animation based on state
+                
+                    // Atualiza a animação do inimigo com base no estado
                     float tpf_current_inimigo;
                     int frame_total_current_inimigo;
                     
@@ -1079,245 +1130,217 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                         tpf_current_inimigo = tpf_inimigo_parado;
                         frame_total_current_inimigo = frame_total_inimigo_parado;
                     }
-                    
+                
                     inimigos[i].acc_animacao += 1.0 / 60.0;
                     if (inimigos[i].acc_animacao >= tpf_current_inimigo) {
                         inimigos[i].acc_animacao -= tpf_current_inimigo;
                         if (inimigos[i].frame_atual < frame_total_current_inimigo - 1) {
                             inimigos[i].frame_atual++;
-                            if (inimigos[i].estado == INIMIGO_ATACANDO && inimigos[i].frame_atual == 0) {
-                                inimigos[i].inimigo_pode_dar_dano = true;
-                            }
                         } else {
                             if (inimigos[i].estado == INIMIGO_ATACANDO) {
-                                inimigos[i].frame_atual = 0;
-                                inimigos[i].inimigo_pode_dar_dano = true;
+                                inimigos[i].frame_atual = 0; // Repete animação de ataque
+                                inimigos[i].inimigo_pode_dar_dano = true; // Reinicia a habilidade de dar dano para o próximo loop de ataque
                             } else if (inimigos[i].estado == INIMIGO_MORRENDO) {
-                                inimigos[i].animacao_morte_finalizada = true;
+                                inimigos[i].animacao_morte_finalizada = true; // Animação de morte concluída
                             } else {
-                                inimigos[i].frame_atual = 0;
+                                inimigos[i].frame_atual = 0; // Repete outras animações (PARADO, ANDANDO)
                             }
                         }
                     }
-
-                    // Collision detection (Garrafa vs Inimigo)
+                
+                    // Detecção de colisão (Garrafa vs Inimigo)
                     if (inimigos[i].estado != INIMIGO_MORRENDO) {
                         for (int j = 0; j < MAX_GARRAFAS; j++) {
                             if (garrafas[j].ativa) {
+                                // Ambas as hitboxes estão em coordenadas de MUNDO, então esta colisão está CORRETA.
                                 float garrafa_hb_x = garrafas[j].x - garrafa_hitbox_width / 2.0;
                                 float garrafa_hb_y = garrafas[j].y - garrafa_hitbox_height / 2.0;
 
-                                float inimigo_hb_x = inimigos[i].x + inimigos[i].hitbox_offset_x;
-                                float inimigo_hb_y = inimigos[i].y + inimigos[i].hitbox_offset_y;
-                                float inimigo_hb_w = inimigos[i].hitbox_width;
-                                float inimigo_hb_h = inimigos[i].hitbox_height;
-
                                 if (check_collision(garrafa_hb_x, garrafa_hb_y, garrafa_hitbox_width, garrafa_hitbox_height,
-                                                     inimigo_hb_x, inimigo_hb_y, inimigo_hb_w, inimigo_hb_h)) {
+                                                    inimigo_world_hb_x, inimigo_hb_y, inimigo_hb_w, inimigo_hb_h)) {
                                     fprintf(stderr, "COLISÃO! Garrafa %d atingiu Inimigo %d! Iniciando animação de morte.\n", j, i);
-                                    garrafas[j].ativa = false;
-                                    
+                                    garrafas[j].ativa = false; // Garrafa é destruída
+                                
                                     inimigos[i].estado = INIMIGO_MORRENDO;
                                     inimigos[i].vel_x = 0;
                                     inimigos[i].frame_atual = 0;
                                     inimigos[i].acc_animacao = 0;
                                     inimigos[i].animacao_morte_finalizada = false;
-                                    break;
+                                    break; // Sai do loop de garrafas, pois uma já atingiu este inimigo
                                 }
                             }
                         }
                     }
-                    
-                    // Deactivate logic for enemies
-                    bool should_deactivate = false;
-
-                    bool is_offscreen_left = inimigos[i].x < -(inimigo_largura_sprite_max * escala_personagens);
-                    bool is_offscreen_right = inimigos[i].x > LARGURA + (inimigo_largura_sprite_max * escala_personagens);
-
-                    if (is_offscreen_left || is_offscreen_right) {
-                        if (inimigos[i].estado == INIMIGO_MORRENDO && !inimigos[i].animacao_morte_finalizada) {
-                            should_deactivate = false;
-                        } else {
-                            should_deactivate = true;
-                        }
-                    }
-
-                    if (should_deactivate) {
-                        fprintf(stderr, "DEBUG: Inimigo %d DESATIVADO (saiu da tela após morte ou normal).\n", i);
-                        inimigos[i].ativa = false;
-                        inimigos[i].estado = INIMIGO_PARADO;
-                        inimigos[i].vel_x = inimigo_velocidade_parado_base;
-                        inimigos[i].animacao_morte_finalizada = false;
-                        inimigos[i].frame_atual = 0;
-                        inimigos[i].acc_animacao = 0;
-                        inimigos[i].inimigo_pode_dar_dano = true;
+                
+                    // Lógica de desativação para inimigos
+                    if (inimigos[i].animacao_morte_finalizada) {
+                         inimigos[i].ativa = false;
                     }
                 }
             }
 
-            // --- Protagonist-Obstacle Collision Logic ---
-            float prot_current_x_screen = personagem_x; // Character X on screen
-            float prot_current_y_screen = personagem_y; // Character Y on screen
+// --- Lógica de Colisão Protagonista-Obstáculo (CORRIGIDO) ---
+if (protagonista_estado == PROT_NORMAL) {
+    // Rastreia se o protagonista está em cima de um obstáculo
+    bool on_obstacle = false;
 
-            if (protagonista_estado == PROT_NORMAL) {
-                // Determine protagonist's bounding box for collision before moving
-                // Use the dynamically adjusted hitbox for collisions here
-                float prot_left_before = prot_current_x_screen + prot_hitbox_offset_x;
-                float prot_right_before = prot_left_before + prot_hitbox_width;
-                float prot_top_before = prot_hb_y; // Use the adjusted prot_hb_y
-                float prot_bottom_before = prot_hb_y + current_prot_hitbox_height; // Use the adjusted height
+    // A hitbox do protagonista já foi calculada (prot_hb_x, prot_hb_y, etc.)
+    // Vamos usá-la para verificar as colisões.
+    float prot_current_hb_x = personagem_x + prot_hitbox_offset_x;
+    float prot_current_hb_y = prot_hb_y; // prot_hb_y já considera se o personagem está agachado
+    float prot_current_hb_w = prot_hitbox_width;
+    float prot_current_hb_h = current_prot_hitbox_height;
 
-                // Predict protagonist's horizontal movement
-                float predicted_prot_left = prot_left_before;
-                float predicted_prot_right = prot_right_before;
-                if (al_key_down(&estado, ALLEGRO_KEY_RIGHT) && !pulando && !atacando && !arremessando) {
-                    predicted_prot_left += velocidade;
-                    predicted_prot_right += velocidade;
-                }
-                if (al_key_down(&estado, ALLEGRO_KEY_LEFT) && !pulando && !atacando && !arremessando) {
-                    predicted_prot_left -= velocidade;
-                    predicted_prot_right -= velocidade;
-                }
-                
-                // Track if protagonist is currently standing on an obstacle
-                bool on_obstacle = false;
+    // Loop único para verificar todos os tipos de colisão com obstáculos
+    for (int i = 0; i < MAX_OBSTACULOS; i++) {
+        if (obstaculos[i].ativa) {
+            // Calcula as coordenadas de tela do obstáculo com o movimento JÁ APLICADO
+            float obstacle_screen_x = obstaculos[i].x - deslocamento_x;
+            float obstacle_top = obstaculos[i].y;
+            float obstacle_width = obstaculos[i].width;
+            float obstacle_height = obstaculos[i].height;
 
-                for (int i = 0; i < MAX_OBSTACULOS; i++) {
-                    if (obstaculos[i].ativa) {
-                        // Calculate obstacle's screen coordinates
-                        float obstacle_screen_x = obstaculos[i].x - deslocamento_x;
-                        float obstacle_top = obstaculos[i].y;
-                        float obstacle_bottom = obstaculos[i].y + obstaculos[i].height;
-                        float obstacle_left = obstacle_screen_x;
-                        float obstacle_right = obstacle_screen_x + obstaculos[i].width;
+            // --- 1. VERIFICAÇÃO DE COLISÃO GERAL ---
+            if (check_collision(prot_current_hb_x, prot_current_hb_y, prot_current_hb_w, prot_current_hb_h,
+                                obstacle_screen_x, obstacle_top, obstacle_width, obstacle_height)) {
 
-                        // Check horizontal collision (prevent passing through)
-                        // If protagonist is moving right and would collide horizontally
-                        if (al_key_down(&estado, ALLEGRO_KEY_RIGHT) && !pulando && !atacando && !arremessando &&
-                            prot_right_before <= obstacle_left && predicted_prot_right > obstacle_left &&
-                            // Crucial for the "only crouch pass" obstacle:
-                            // If it's a "crouch-pass" obstacle AND protagonist is NOT crouching
-                            // OR if it's a regular obstacle,
-                            // AND there's vertical overlap (character isn't clearly above/below)
-                            (obstaculos[i].only_crouch_pass ? !agachando : true) && // Block if it's a crouch-pass obs AND not crouching
-                            !(prot_bottom_before <= obstacle_top || prot_top_before >= obstacle_bottom)) {
-                            
-                            deslocamento_x = old_deslocamento_x_prot; // Revert scroll
-                        }
-                        // If protagonist is moving left and would collide horizontally
-                        else if (al_key_down(&estado, ALLEGRO_KEY_LEFT) && !pulando && !atacando && !arremessando &&
-                                 prot_left_before >= obstacle_right && predicted_prot_left < obstacle_right &&
-                                 // Crucial for the "only crouch pass" obstacle:
-                                 (obstaculos[i].only_crouch_pass ? !agachando : true) && // Block if it's a crouch-pass obs AND not crouching
-                                 !(prot_bottom_before <= obstacle_top || prot_top_before >= obstacle_bottom)) {
-                            
-                            deslocamento_x = old_deslocamento_x_prot; // Revert scroll
-                        }
+                // Se colidiu, decidimos o que fazer.
+                bool should_block_horizontally = !pulando && !(obstaculos[i].only_crouch_pass && agachando);
 
-                        // Re-calculate protagonist's current screen position and hitbox after potential horizontal adjustment
-                        // (These are needed for the vertical collision check below)
-                        prot_left_before = personagem_x + prot_hitbox_offset_x;
-                        prot_right_before = prot_left_before + prot_hitbox_width;
-                        prot_top_before = prot_hb_y; // Use the adjusted prot_hb_y
-                        prot_bottom_before = prot_hb_y + current_prot_hitbox_height; // Use the adjusted height
-
-                        // Check for vertical collision (landing on obstacle)
-                        if (pulando && vel_y > 0 &&
-                            // Check vertical position relative to obstacle's top (considering character's new hitbox top)
-                            (old_personagem_y + prot_hitbox_offset_y + prot_hitbox_height <= obstacle_top ||
-                             // Special case: if it's a crouch-pass obstacle, can't land on top if too high
-                             (obstaculos[i].only_crouch_pass && (obstacle_top < prot_top_before + current_prot_hitbox_height / 2))) && // Simplified check for "too high to land"
-                            personagem_y + prot_hitbox_offset_y + prot_hitbox_height > obstacle_top &&
-                            prot_right_before > obstacle_left && prot_left_before < obstacle_right) {
-                            
-                            personagem_y = obstacle_top - prot_hitbox_offset_y - prot_hitbox_height; // Snap to top of obstacle
-                            pulando = false;
-                            vel_y = 0;
-                            vel_x_pulo = 0;
-                            current_ground_y = personagem_y; // Protagonist's current Y is the new ground
-                            on_obstacle = true; // Flag that protagonist is on an obstacle
-                            fprintf(stderr, "DEBUG: Personagem pousou no obstáculo %d. Novo chão Y: %.2f\n", i, current_ground_y);
-                            break; // Landed on one obstacle, no need to check others
-                        }
-
-                        // Check if the character is currently standing on this obstacle
-                        if (check_collision(prot_left_before, prot_bottom_before - 5, prot_hitbox_width, 10, // Check a small area just below character
-                                             obstacle_left, obstacle_top, obstaculos[i].width, obstaculos[i].height) &&
-                                             prot_bottom_before >= obstacle_top - 5 && // Use adjusted protagonist bottom
-                                             prot_bottom_before <= obstacle_top + 5) { // Use adjusted protagonist bottom
-                            on_obstacle = true;
-                            current_ground_y = obstacle_top - prot_hitbox_offset_y - prot_hitbox_height; // The obstacle's top is the current ground
-                            pulando = false; // Ensure not considered jumping if on an obstacle
-                            vel_y = 0; // Stop vertical movement
-                        }
-                    }
-                }
-                
-                // If protagonist is not on any obstacle and not jumping, reset ground to base.
-                // This is crucial for falling off obstacles.
-                if (!on_obstacle && !pulando && personagem_y < personagem_y_base) {
-                    current_ground_y = personagem_y_base;
+                if (should_block_horizontally) {
+                    // É uma colisão de bloqueio horizontal. Reverte o movimento.
+                    deslocamento_x = old_deslocamento_x_prot;
+                    // Como o movimento foi revertido, saímos do loop de obstáculos para esta iteração.
+                    // A posição será reavaliada no próximo quadro.
+                    break;
                 }
             }
-            // --- END NEW ---
+        }
+    }
 
-            // --- NEW: Money Note Collection Logic ---
+
+    // --- 2. Lógica de Aterrisagem e Manutenção no Obstáculo ---
+    // Este loop é necessário para garantir que o personagem pouse ou permaneça em cima de plataformas.
+    // Usamos a posição do personagem (potencialmente já corrigida pela colisão horizontal)
+    for (int i = 0; i < MAX_OBSTACULOS; i++) {
+        if (obstaculos[i].ativa) {
+            // Recalcula a posição do obstáculo, pois o deslocamento_x pode ter sido revertido
+            float obstacle_screen_x = obstaculos[i].x - deslocamento_x;
+            float obstacle_top = obstaculos[i].y;
+
+            // A. Lógica de Pouso (Vertical): Verifica se o personagem estava acima e agora cruzou o topo do obstáculo.
+            // Esta é uma verificação preditiva, usando a posição Y antiga.
+            if (pulando && vel_y > 0 &&
+                (old_personagem_y + prot_hitbox_offset_y + prot_current_hb_h) <= obstacle_top && // Estava acima
+                (personagem_y + prot_hitbox_offset_y + prot_current_hb_h) > obstacle_top &&     // Agora está abaixo
+                (prot_current_hb_x + prot_current_hb_w > obstacle_screen_x) &&              // Sobreposição horizontal
+                (prot_current_hb_x < obstacle_screen_x + obstaculos[i].width)) {
+
+                // Não se pode pousar em obstáculos que são para passar agachado
+                if (!obstaculos[i].only_crouch_pass) {
+                    personagem_y = obstacle_top - prot_hitbox_offset_y - prot_current_hb_h; // Pousa no topo
+                    pulando = false;
+                    vel_y = 0;
+                    vel_x_pulo = 0;
+                    current_ground_y = personagem_y;
+                    on_obstacle = true;
+                    break; // Pousou em um obstáculo, não precisa verificar outros para pouso.
+                }
+            }
+
+            // B. Lógica de Manutenção: Verifica se o personagem já está em cima do obstáculo.
+            if (!pulando && !on_obstacle &&
+                (personagem_y + prot_hitbox_offset_y + prot_current_hb_h > obstacle_top - 5) &&
+                (personagem_y + prot_hitbox_offset_y + prot_current_hb_h < obstacle_top + 5) &&
+                (prot_current_hb_x + prot_current_hb_w > obstacle_screen_x) &&
+                (prot_current_hb_x < obstacle_screen_x + obstaculos[i].width)) {
+
+                if (!obstaculos[i].only_crouch_pass) {
+                    on_obstacle = true;
+                    current_ground_y = personagem_y; // O chão atual é a posição Y atual (no obstáculo)
+                }
+            }
+        }
+    }
+
+    // Se, após todas as verificações, o personagem não está pulando e nem sobre um obstáculo,
+    // ele deve cair em direção ao chão principal.
+    if (!on_obstacle && !pulando && personagem_y < personagem_y_base) {
+        current_ground_y = personagem_y_base;
+    }
+}
+// --- FIM DA LÓGICA DE COLISÃO ---
+
+            // --- NOVO: Lógica de Coleta de Notas de Dinheiro ---
             if (protagonista_estado == PROT_NORMAL) {
                 for (int i = 0; i < MAX_MONEY_NOTES; i++) {
                     if (money_notes[i].ativa) {
-                        float money_note_hb_x = money_notes[i].x;
+                        float money_note_hb_x = money_notes[i].x - deslocamento_x; // Posição de tela da nota
                         float money_note_hb_y = money_notes[i].y;
                         float money_note_hb_w = money_notes[i].hitbox_width;
                         float money_note_hb_h = money_notes[i].hitbox_height;
 
                         if (check_collision(prot_hb_x, prot_hb_y, prot_hb_w, current_prot_hitbox_height,
-                                             money_note_hb_x, money_note_hb_y, money_note_hb_w, money_note_hb_h)) {
+                                            money_note_hb_x, money_note_hb_y, money_note_hb_w, money_note_hb_h)) {
                             player_money += money_notes[i].value;
-                            money_notes[i].ativa = false;
+                            money_notes[i].ativa = false; // Desativa a nota após a coleta
                             fprintf(stderr, "DEBUG: Coletou R$%d! Total: R$%d\n", money_notes[i].value, player_money);
                         }
                     }
                 }
             }
-            // --- END NEW ---
+            // --- FIM NOVO ---
 
-            al_clear_to_color(al_map_rgb(0, 0, 0));
+            al_clear_to_color(al_map_rgb(0, 0, 0)); // Limpa a tela
 
-            int parte1_largura = bg_width - (int)deslocamento_x;
-            if (parte1_largura > LARGURA) parte1_largura = LARGURA;
-            int parte2_largura = LARGURA - parte1_largura;
+            // --- Lógica de Desenho do Background para Tiling Infinito ---
+            // CORRIGIDO: Cálculo do offset para tiling do background.
+            // O fmod garante que o offset_x_bg esteja sempre dentro dos limites da largura do background.
+            int offset_x_bg = (int)fmod(deslocamento_x, bg_width);
+            if (offset_x_bg < 0) offset_x_bg += bg_width; // Garante offset positivo
 
-            al_draw_scaled_bitmap(background, (int)deslocamento_x, 0, parte1_largura, bg_height, 0, 0, parte1_largura, ALTURA, 0);
-            if (parte2_largura > 0) al_draw_scaled_bitmap(background, 0, 0, parte2_largura, bg_height, parte1_largura, 0, parte2_largura, ALTURA, 0);
+            // Desenha a primeira parte do background
+            al_draw_scaled_bitmap(background,
+                                  offset_x_bg, 0, // Fonte X na imagem (começa do offset)
+                                  bg_width - offset_x_bg, bg_height, // Largura da parte a ser desenhada
+                                  0, 0, // Destino X, Y na tela
+                                  (float)(bg_width - offset_x_bg), (float)ALTURA, 0); // Largura, Altura na tela (escalado)
 
-            // --- Draw Obstacles ---
+            // Desenha a segunda parte do background (para tiling) se necessário
+            if ((bg_width - offset_x_bg) < LARGURA) {
+                al_draw_scaled_bitmap(background,
+                                      0, 0, // Fonte X na imagem (começa do zero)
+                                      LARGURA - (bg_width - offset_x_bg), bg_height, // Largura da parte a ser desenhada
+                                      (float)(bg_width - offset_x_bg), 0, // Destino X, Y na tela
+                                      (float)(LARGURA - (bg_width - offset_x_bg)), (float)ALTURA, 0); // Largura, Altura na tela (escalado)
+            }
+            // --- FIM DA LÓGICA DE DESENHO DO BACKGROUND ---
+
+
+            // --- Desenha Obstáculos ---
             for (int i = 0; i < MAX_OBSTACULOS; i++) {
                 if (obstaculos[i].ativa) {
-                    float draw_x = obstaculos[i].x - deslocamento_x;
-                    // Draw using the sprite_bitmap field
+                    float draw_x = obstaculos[i].x - deslocamento_x; // Posição de tela
+                    // Desenha usando o campo sprite_bitmap
                     al_draw_scaled_bitmap(obstaculos[i].sprite_bitmap,
-                                         0, 0,
-                                         al_get_bitmap_width(obstaculos[i].sprite_bitmap), al_get_bitmap_height(obstaculos[i].sprite_bitmap),
-                                         draw_x, obstaculos[i].y, // Obstacle's Y is its hitbox top, which aligns with its visual bottom
-                                         obstaculos[i].width, obstaculos[i].height,
-                                         0);
-                    // DEBUG: Drawing removed
-                    // al_draw_rectangle(draw_x, obstaculos[i].y,
-                    //                   draw_x + obstaculos[i].width, obstaculos[i].y + obstaculos[i].height,
-                    //                   al_map_rgb(255, 0, 0), 1); // Red color for obstacle hitbox
+                                          0, 0,
+                                          al_get_bitmap_width(obstaculos[i].sprite_bitmap), al_get_bitmap_height(obstaculos[i].sprite_bitmap),
+                                          draw_x, obstaculos[i].y, // O Y do obstáculo é o topo da sua hitbox, que alinha com a parte inferior visual
+                                          obstaculos[i].width, obstaculos[i].height,
+                                          0);
                 }
             }
-            // --- END NEW ---
+            // --- FIM NOVO ---
 
-            // --- Draw NPC ---
+            // --- Desenha NPC ---
             if (traficante.ativa) {
-                float draw_x = traficante.x - deslocamento_x;
+                float draw_x = traficante.x - deslocamento_x; // Posição de tela
                 al_draw_scaled_bitmap(sprite_traficante_parada,
-                                                 traficante.frame_atual * traficante.largura_sprite, 0,
-                                                 traficante.largura_sprite, traficante.altura_sprite,
-                                                 draw_x, traficante.y,
-                                                 traficante.largura_sprite * escala_traficante, traficante.altura_sprite * escala_traficante,
-                                                 ALLEGRO_FLIP_HORIZONTAL);
+                                                  traficante.frame_atual * traficante.largura_sprite, 0,
+                                                  traficante.largura_sprite, traficante.altura_sprite,
+                                                  draw_x, traficante.y,
+                                                  traficante.largura_sprite * escala_traficante, traficante.altura_sprite * escala_traficante,
+                                                  ALLEGRO_FLIP_HORIZONTAL);
 
                 float text_x = draw_x + (traficante.largura_sprite * escala_traficante) / 2.0;
                 float text_y = traficante.y + 70;
@@ -1327,88 +1350,65 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                 al_draw_textf(fonte, al_map_rgb(255, 255, 255), text_x, text_y + al_get_font_line_height(fonte) * 2, ALLEGRO_ALIGN_CENTER, "(+20 HP)");
                 al_draw_textf(fonte, al_map_rgb(255, 255, 255), text_x, text_y + al_get_font_line_height(fonte) * 3, ALLEGRO_ALIGN_CENTER, "R$%d", NPC_HEAL_COST);
             }
-            // --- END NEW ---
+            // --- FIM NOVO ---
 
-            // --- DRAW CHARACTER ANIMATION ---
+            // --- DESENHA ANIMAÇÃO DO PERSONAGEM ---
             if (protagonista_estado == PROT_MORRENDO) {
                 al_draw_scaled_bitmap(sprite_personagem_morte,
-                                                 personagem_frame_morte * frame_largura_personagem_morte, 0,
-                                                 frame_largura_personagem_morte, frame_altura,
-                                                 personagem_x, personagem_y,
-                                                 frame_largura_personagem_morte * escala_personagens, frame_altura * escala_personagens, 0);
-            } else if (protagonist_visible) {
+                                                  personagem_frame_morte * frame_largura_personagem_morte, 0,
+                                                  frame_largura_personagem_morte, frame_altura,
+                                                  personagem_x, personagem_y,
+                                                  frame_largura_personagem_morte * escala_personagens, frame_altura * escala_personagens, 0);
+            } else if (protagonist_visible) { // Só desenha se o protagonista estiver visível (para efeito de piscar)
                 if (pulando)
                     al_draw_scaled_bitmap(sprite_pulando, frame_pulando * frame_largura_pulando, 0, frame_largura_pulando, frame_altura,
-                                                     personagem_x, personagem_y, frame_largura_pulando * escala_personagens, frame_altura * escala_personagens, 0);
+                                                      personagem_x, personagem_y, frame_largura_pulando * escala_personagens, frame_altura * escala_personagens, 0);
                 else if (agachando)
                     al_draw_scaled_bitmap(sprite_agachado, frame_agachado * frame_largura_agachado, 0, frame_largura_agachado, frame_altura,
-                                                     personagem_x, personagem_y, frame_largura_agachado * escala_personagens, frame_altura * escala_personagens, 0);
+                                                      personagem_x, personagem_y, frame_largura_agachado * escala_personagens, frame_altura * escala_personagens, 0);
                 else if (atacando)
                     al_draw_scaled_bitmap(sprite_ataque1, frame_ataque1 * frame_largura_ataque1, 0, frame_largura_ataque1, frame_altura,
-                                                     personagem_x, personagem_y, frame_largura_ataque1 * escala_personagens, frame_altura * escala_personagens, 0);
+                                                      personagem_x, personagem_y, frame_largura_ataque1 * escala_personagens, frame_altura * escala_personagens, 0);
                 else if (especial_ativo)
                     al_draw_scaled_bitmap(sprite_especial, frame_especial * frame_largura_especial, 0, frame_largura_especial, frame_altura,
-                                                     personagem_x, personagem_y, frame_largura_especial * escala_personagens, frame_altura * escala_personagens, 0);
+                                                      personagem_x, personagem_y, frame_largura_especial * escala_personagens, frame_altura * escala_personagens, 0);
                 else if (arremessando)
                     al_draw_scaled_bitmap(sprite_arremesso, frame_arremesso * frame_largura_arremesso, 0, frame_largura_arremesso, frame_altura,
-                                                     personagem_x, personagem_y, frame_largura_arremesso * escala_personagens, frame_altura * escala_personagens, 0);
+                                                      personagem_x, personagem_y, frame_largura_arremesso * escala_personagens, frame_altura * escala_personagens, 0);
                 else if (andando)
                     al_draw_scaled_bitmap(correndo ? sprite_correndo : sprite_andando,
-                                                     (correndo ? frame_correndo : frame_andando) * (correndo ? frame_largura_correndo : frame_largura_andando),
-                                                     0,
-                                                     (correndo ? frame_largura_correndo : frame_largura_andando),
-                                                     frame_altura,
-                                                     personagem_x, personagem_y,
-                                                     (correndo ? frame_largura_correndo : frame_largura_andando) * escala_personagens,
-                                                     frame_altura * escala_personagens, 0);
+                                                      (correndo ? frame_correndo : frame_andando) * (correndo ? frame_largura_correndo : frame_largura_andando),
+                                                      0,
+                                                      (correndo ? frame_largura_correndo : frame_largura_andando),
+                                                      frame_altura,
+                                                      personagem_x, personagem_y,
+                                                      (correndo ? frame_largura_correndo : frame_largura_andando) * escala_personagens,
+                                                      frame_altura * escala_personagens, 0);
                 else
                     al_draw_scaled_bitmap(sprite_parado, frame_parado * frame_largura_parado, 0, frame_largura_parado, frame_altura,
-                                                     personagem_x, personagem_y, frame_largura_parado * escala_personagens, frame_altura * escala_personagens, 0);
+                                                      personagem_x, personagem_y, frame_largura_parado * escala_personagens, frame_altura * escala_personagens, 0);
             }
-            // --- END DRAW CHARACTER ANIMATION ---
+            // --- FIM DESENHO ANIMAÇÃO DO PERSONAGEM ---
 
-
-            // --- DEBUG: Draw Protagonist Hitbox ---
-            // Drawing removed
-            // al_draw_rectangle(prot_hb_x, prot_hb_y,
-            //                   prot_hb_x + prot_hb_w, prot_hb_y + current_prot_hitbox_height,
-            //                   al_map_rgb(255, 255, 0), 1);
-            // --- END DEBUG ---
-
-            // --- DEBUG: Draw Protagonist ATTACK Hitbox ---
-            // Drawing removed
-            // if (atacando) {
-            //     float prot_attack_hb_x_debug = personagem_x + prot_attack_hitbox_offset_x;
-            //     float prot_attack_hb_y_debug = personagem_y + prot_attack_hitbox_offset_y;
-            //     al_draw_rectangle(prot_attack_hb_x_debug, prot_attack_hb_y_debug,
-            //                       prot_attack_hb_x_debug + prot_attack_hb_w, prot_attack_hb_y_debug + prot_attack_hb_h,
-            //                       al_map_rgb(0, 255, 0), 1);
-            // }
-            // --- END DEBUG ---
-
-
+            // --- Desenha Garrafas ---
             for (int i = 0; i < MAX_GARRAFAS; i++) {
                 if (garrafas[i].ativa) {
                     al_draw_scaled_rotated_bitmap(sprite_garrafa,
-                                                     garrafa_largura_original / 2.0, garrafa_altura_original / 2.0,
-                                                     garrafas[i].x, garrafas[i].y,
-                                                     escala_garrafa, escala_garrafa,
-                                                     garrafas[i].angulo,
-                                                     0);
-                    // DEBUG: Drawing removed
-                    // float garrafa_hb_x_debug = garrafas[i].x - garrafa_hitbox_width / 2.0;
-                    // float garrafa_hb_y_debug = garrafas[i].y - garrafa_hitbox_height / 2.0;
-                    // al_draw_rectangle(garrafa_hb_x_debug, garrafa_hb_y_debug,
-                    //                   garrafa_hb_x_debug + garrafa_hitbox_width, garrafa_hb_y_debug + garrafa_hitbox_height,
-                    //                   al_map_rgb(255, 0, 255), 1);
+                                                      garrafa_largura_original / 2.0, garrafa_altura_original / 2.0,
+                                                      garrafas[i].x - deslocamento_x, garrafas[i].y, // Posição de tela da garrafa
+                                                      escala_garrafa, escala_garrafa,
+                                                      garrafas[i].angulo,
+                                                      0);
                 }
             }
 
+            // --- Desenha Inimigos ---
             for (int i = 0; i < MAX_INIMIGOS; i++) {
                 if (inimigos[i].ativa) {
-                    ALLEGRO_BITMAP *current_enemy_sprite;
-                    int current_frame_largura_inimigo;
-                    
+                    ALLEGRO_BITMAP *current_enemy_sprite = NULL;
+                    int current_frame_largura_inimigo = 0;
+
+                    // Atribuição do sprite correto e largura do frame para o estado atual
                     if (inimigos[i].estado == INIMIGO_ANDANDO) {
                         current_enemy_sprite = sprite_inimigo_andando;
                         current_frame_largura_inimigo = frame_largura_inimigo_andando;
@@ -1422,68 +1422,58 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                         current_enemy_sprite = sprite_inimigo_parado;
                         current_frame_largura_inimigo = frame_largura_inimigo_parado;
                     }
-                    
+                
                     al_draw_scaled_bitmap(current_enemy_sprite,
-                                                     inimigos[i].frame_atual * current_frame_largura_inimigo, 0,
-                                                     current_frame_largura_inimigo, inimigo_altura_sprite,
-                                                     inimigos[i].x, inimigos[i].y,
-                                                     current_frame_largura_inimigo * escala_personagens, inimigo_altura_sprite * escala_personagens,
-                                                     ALLEGRO_FLIP_HORIZONTAL);
-
-                    // DEBUG: Drawing removed
-                    // float inimigo_hb_x_debug = inimigos[i].x + inimigos[i].hitbox_offset_x;
-                    // float inimigo_hb_y_debug = inimigos[i].y + inimigos[i].hitbox_offset_y;
-                    // al_draw_rectangle(inimigo_hb_x_debug, inimigo_hb_y_debug,
-                    //                   inimigo_hb_x_debug + inimigos[i].hitbox_width, inimigo_hb_y_debug + inimigos[i].hitbox_height,
-                    //                   al_map_rgb(0, 255, 255), 1);
+                                                      inimigos[i].frame_atual * current_frame_largura_inimigo, 0,
+                                                      current_frame_largura_inimigo, inimigo_altura_sprite,
+                                                      inimigos[i].x - deslocamento_x, inimigos[i].y, // Posição de tela do inimigo
+                                                      current_frame_largura_inimigo * escala_personagens, inimigo_altura_sprite * escala_personagens,
+                                                      ALLEGRO_FLIP_HORIZONTAL); // Inverte horizontalmente para facear o protagonista
                 }
             }
 
-            // --- Draw Money Notes ---
+            // --- Desenha Notas de Dinheiro ---
             for (int i = 0; i < MAX_MONEY_NOTES; i++) {
                 if (money_notes[i].ativa) {
                     al_draw_scaled_bitmap(money_notes[i].sprite_bitmap,
-                                         0, 0,
-                                         al_get_bitmap_width(money_notes[i].sprite_bitmap), al_get_bitmap_height(money_notes[i].sprite_bitmap),
-                                         money_notes[i].x, money_notes[i].y,
-                                         money_notes[i].hitbox_width, money_notes[i].hitbox_height,
-                                         0);
-                    // DEBUG: Draw Money Note Hitbox
-                    // al_draw_rectangle(money_notes[i].x, money_notes[i].y,
-                    //                   money_notes[i].x + money_notes[i].hitbox_width, money_notes[i].y + money_notes[i].hitbox_height,
-                    //                   al_map_rgb(255, 165, 0), 1); // Orange for money hitbox
+                                          0, 0,
+                                          al_get_bitmap_width(money_notes[i].sprite_bitmap), al_get_bitmap_height(money_notes[i].sprite_bitmap),
+                                          money_notes[i].x - deslocamento_x, money_notes[i].y, // Posição de tela
+                                          money_notes[i].hitbox_width, money_notes[i].hitbox_height,
+                                          0);
                 }
             }
-            // --- END NEW ---
+            // --- FIM NOVO ---
 
-            // --- Draw Protagonist Health Bar ---
-            float health_bar_width = (float)protagonist_health / (MAX_PROTAGONIST_HEALTH + NPC_HEAL_AMOUNT) * 200; // Adjusted max width
+            // --- Desenha Barra de Vida do Protagonista ---
+            float health_bar_width = (float)protagonist_health / (MAX_PROTAGONIST_HEALTH + NPC_HEAL_AMOUNT) * 200; // Largura máxima ajustada
             if (health_bar_width < 0) health_bar_width = 0;
-            // Change color to indicate over-heal if protagonist_health > MAX_PROTAGONIST_HEALTH
-            ALLEGRO_COLOR health_color = al_map_rgb(0, 255, 0); // Green
+            // Altera a cor para indicar "over-heal" se protagonist_health > MAX_PROTAGONIST_HEALTH
+            ALLEGRO_COLOR health_color = al_map_rgb(0, 255, 0); // Verde
             if (protagonist_health > MAX_PROTAGONIST_HEALTH) {
-                health_color = al_map_rgb(0, 255, 255); // Cyan for over-heal
+                health_color = al_map_rgb(0, 255, 255); // Ciano para over-heal
             }
             al_draw_filled_rectangle(10, 10, 10 + health_bar_width, 30, health_color);
             al_draw_rectangle(10, 10, 10 + 200, 30, al_map_rgb(255, 255, 255), 2);
             al_draw_textf(fonte, al_map_rgb(255, 255, 255), 220, 15, 0, "HP: %d", protagonist_health);
-            // --- END NEW ---
+            // --- FIM NOVO ---
 
-            // --- NEW: Draw Player Money ---
+            // --- NOVO: Desenha Dinheiro do Jogador ---
             al_draw_textf(fonte, al_map_rgb(255, 255, 0), LARGURA - 10, 10, ALLEGRO_ALIGN_RIGHT, "R$ %d", player_money);
-            // --- END NEW ---
+            // --- FIM NOVO ---
 
-            al_flip_display();
+            al_flip_display(); // Atualiza a tela
         }
     }
 
-    // --- Destroy Audio Assets ---
+    // --- Limpeza de Recursos (Liberação de Memória) ---
+    // --- Destrói Ativos de Áudio ---
     if (instancia_som_verdebalaraio) {
         al_stop_sample_instance(instancia_som_verdebalaraio);
         al_destroy_sample_instance(instancia_som_verdebalaraio);
     }
     if (som_verdebalaraio) al_destroy_sample(som_verdebalaraio);
-    // --- END NEW ---
+    // --- FIM NOVO ---
 
     al_destroy_bitmap(background);
     al_destroy_bitmap(sprite_parado);
@@ -1502,15 +1492,12 @@ void jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     al_destroy_bitmap(sprite_personagem_morte);
     al_destroy_bitmap(sprite_traficante_parada);
     al_destroy_bitmap(sprite_sacos_lixo);
-    al_destroy_bitmap(sprite_placa_radar); // NEW: Destroy new obstacle sprite
-    al_destroy_bitmap(sprite_2reais); // NEW: Destroy money notes
-    al_destroy_bitmap(sprite_5reais); // NEW: Destroy money notes
-    al_destroy_bitmap(sprite_10reais); // NEW: Destroy money notes
+    al_destroy_bitmap(sprite_placa_radar); // Destrói novo sprite de obstáculo
+    al_destroy_bitmap(sprite_2reais); // Destrói notas de dinheiro
+    al_destroy_bitmap(sprite_5reais); // Destrói notas de dinheiro
+    al_destroy_bitmap(sprite_10reais); // Destrói notas de dinheiro
     al_destroy_timer(timer);
 }
-
-
-
 
 
 
