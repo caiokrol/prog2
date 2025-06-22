@@ -13,6 +13,97 @@
 #include <math.h>
 #include <time.h> // Necessário para srand(time(NULL))
 
+
+// --- Novas Definições para o Chefe ---
+#define BOSS_SPAWN_X 1500.0f
+#define BOSS_INTERACTION_DISTANCE 200.0f
+
+#define BOSS_PROSTITUTA_PARADA_FRAME_COUNT 5
+#define BOSS_PROSTITUTA_TRANS1_FRAME_COUNT 8
+#define BOSS_DEMON_TRANS2_FRAME_COUNT 4
+#define BOSS_DEMON_IDLE_FRAME_COUNT 5
+// --- NOVO: Definições de combate do chefe ---
+#define BOSS_DEMON_ATTACK_FRAME_COUNT 7
+#define BOSS_DEMON_DANO_FRAME_COUNT 3
+#define BOSS_DEMON_MORTE_FRAME_COUNT 4
+#define MAX_BOSS_HEALTH 500 // Vida máxima do chefe
+#define BOSS_ATTACK_COOLDOWN 3.0 // Tempo em segundos entre os ataques
+#define BOSS_PROJECTILE_DAMAGE 25 // Dano do projétil do chefe
+#define PLAYER_ATTACK_DAMAGE_TO_BOSS 35 // Dano que o jogador causa ao chefe
+
+// --- ALTERADO: Enumeração dos Estados do Chefe ---
+typedef enum {
+    BOSS_INVISIVEL,      // O chefe ainda não apareceu
+    BOSS_PARADA,         // A forma de prostituta, parada
+    BOSS_TRANSFORMANDO,  // A primeira animação de transformação
+    BOSS_TRANSFORMANDO_2, // A segunda animação de transformação
+    BOSS_DEMONIO_IDLE,   // O chefe transformado, em modo de espera
+    // --- NOVOS ESTADOS DE COMBATE ---
+    BOSS_DEMONIO_ATACANDO,
+    BOSS_DEMONIO_DANO,
+    BOSS_DEMONIO_MORRENDO
+} BossState;
+
+// --- Estrutura para a Entrada do Chefe ---
+typedef struct {
+    float x, y;
+    ALLEGRO_BITMAP *sprite_bitmap;
+    float width, height;
+} BossEntrance;
+
+// --- NOVO: Estrutura para os Projéteis do Chefe ---
+#define MAX_BOSS_PROJECTILES 5
+typedef struct {
+    float x, y;
+    float vel_x;
+    float angulo;
+    bool ativa;
+} BossProjectile;
+
+
+// --- ALTERADO: Estrutura para o Chefe ---
+typedef struct {
+    float x, y;
+    bool ativa;
+    BossState estado;
+    int frame_atual;
+    float acc_animacao;
+    float escala;
+
+    // --- NOVO: Atributos de Combate ---
+    int health;
+    float attack_cooldown;
+    float invulnerability_timer;
+
+    // Sprites para as diferentes formas e animações
+    ALLEGRO_BITMAP *sprite_parada;
+    ALLEGRO_BITMAP *sprite_trans1;
+    ALLEGRO_BITMAP *sprite_trans2;
+    ALLEGRO_BITMAP *sprite_demonio_idle;
+    // --- NOVOS SPRITES ---
+    ALLEGRO_BITMAP *sprite_demonio_ataque;
+    ALLEGRO_BITMAP *sprite_demonio_dano;
+    ALLEGRO_BITMAP *sprite_demonio_morte;
+
+    // Propriedades de animação
+    int frame_largura_parada;
+    int frame_altura_parada;
+    int frame_largura_trans1;
+    int frame_altura_trans1;
+    int frame_largura_trans2;
+    int frame_altura_trans2;
+    int frame_largura_demonio_idle;
+    int frame_altura_demonio_idle;
+    // --- NOVAS PROPRIEDADES ---
+    int frame_largura_demonio_ataque;
+    int frame_altura_demonio_ataque;
+    int frame_largura_demonio_dano;
+    int frame_altura_demonio_dano;
+    int frame_largura_demonio_morte;
+    int frame_altura_demonio_morte;
+} Boss;
+
+
 // --- Constantes da Janela ---
 #define LARGURA 1536
 #define ALTURA 864
@@ -30,7 +121,7 @@ typedef struct {
     bool ativa;
 } Garrafa;
 
-// --- NOVO: Estrutura para a granada ---
+// --- Estrutura para a granada ---
 typedef struct {
     float x, y;
     float vel_x, vel_y;
@@ -53,7 +144,7 @@ typedef enum {
     INIMIGO_MORRENDO
 } EnemyState;
 
-// --- NOVO: Enumeração dos Tipos de Inimigo ---
+// --- Enumeração dos Tipos de Inimigo ---
 typedef enum {
     NOIA,
     POLICIAL
@@ -61,14 +152,14 @@ typedef enum {
 
 // --- Enumeração dos Estados do Protagonista ---
 typedef enum {
-    PROT_NORMAL,     // Estado normal (parado, andando, pulando, agachando, atacando, arremessando)
-    PROT_MORRENDO    // Estado de morte do protagonista
+    PROT_NORMAL,  // Estado normal (parado, andando, pulando, agachando, atacando, arremessando)
+    PROT_MORRENDO  // Estado de morte do protagonista
 } ProtagonistState;
 
 // Estrutura para propriedades do inimigo (ATUALIZADA)
 typedef struct {
     float x, y;    // Posição do inimigo no MUNDO (não na TELA)
-    float vel_x;   // Velocidade horizontal RELATIVA AO MUNDO
+    float vel_x;    // Velocidade horizontal RELATIVA AO MUNDO
     int frame_atual;
     float acc_animacao;
     bool ativa;
@@ -276,6 +367,7 @@ bool game_over_screen(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGR
     return restart_game;
 }
 
+
 // --- Função Principal do Jogo ---
 // Retorna true se o jogo deve ser reiniciado, false se deve sair
 bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *fonte) {
@@ -320,6 +412,19 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     ALLEGRO_BITMAP *sprite_5reais = al_load_bitmap("5reais.png");
     ALLEGRO_BITMAP *sprite_10reais = al_load_bitmap("10reais.png");
 
+    // --- NOVO: Carregamento de Bitmaps do Chefe ---
+    ALLEGRO_BITMAP *sprite_gatopreto = al_load_bitmap("gatopreto.png");
+    ALLEGRO_BITMAP *sprite_prostituta_parada = al_load_bitmap("prostituta_parada.png");
+    ALLEGRO_BITMAP *sprite_prostituta_trans1 = al_load_bitmap("prostituta_trans1.png");
+    ALLEGRO_BITMAP *sprite_demon_trans2 = al_load_bitmap("demon_trans2.png");     // Sprite para a segunda transformação
+    ALLEGRO_BITMAP *sprite_demon_parado = al_load_bitmap("demon_parado.png");       // Sprite para a animação idle do demônio
+    // --- NOVOS SPRITES DO CHEFE ---
+    ALLEGRO_BITMAP *sprite_demon_ataque = al_load_bitmap("demon_ataque.png");
+    ALLEGRO_BITMAP *sprite_demon_dano = al_load_bitmap("demon_dano.png");
+    ALLEGRO_BITMAP *sprite_demon_morte = al_load_bitmap("demon_morte.png");
+    ALLEGRO_BITMAP *sprite_demon_projetil = al_load_bitmap("demon_projetil.png");
+
+
     // --- Carregamento de Áudio ---
     ALLEGRO_SAMPLE *som_verdebalaraio = al_load_sample("verdebalaraio.ogg");
     ALLEGRO_SAMPLE_INSTANCE *instancia_som_verdebalaraio = NULL;
@@ -330,7 +435,12 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
         !sprite_inimigo_parado || !sprite_inimigo_andando || !sprite_inimigo_morte || !sprite_inimigo_ataque ||
         !sprite_personagem_morte || !sprite_traficante_parada || !som_verdebalaraio || !sprite_sacos_lixo ||
         !sprite_placa_radar || !sprite_2reais || !sprite_5reais || !sprite_10reais ||
-        !sprite_policial_parado || !sprite_policial_arremesso || !sprite_explosao || !sprite_policial_morte) { // NOVO: Checagem dos novos sprites
+        !sprite_policial_parado || !sprite_policial_arremesso || !sprite_explosao || !sprite_policial_morte ||
+        !sprite_gatopreto || !sprite_prostituta_parada || !sprite_prostituta_trans1 ||
+        !sprite_demon_trans2 || !sprite_demon_parado ||
+        // --- NOVO: Checagem dos novos sprites de combate do chefe ---
+        !sprite_demon_ataque || !sprite_demon_dano || !sprite_demon_morte || !sprite_demon_projetil
+        ) {
         fprintf(stderr, "ERRO CRÍTICO: Falha ao carregar um ou mais bitmaps/áudios! Verifique nomes/caminhos dos arquivos.\n");
         // Limpeza de todos os bitmaps carregados para evitar vazamento de memória
         al_destroy_bitmap(background); al_destroy_bitmap(sprite_parado); al_destroy_bitmap(sprite_andando);
@@ -342,6 +452,11 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
         al_destroy_bitmap(sprite_placa_radar); al_destroy_bitmap(sprite_2reais); al_destroy_bitmap(sprite_5reais);
         al_destroy_bitmap(sprite_10reais); al_destroy_bitmap(sprite_policial_parado); al_destroy_bitmap(sprite_policial_arremesso);
         al_destroy_bitmap(sprite_explosao); al_destroy_bitmap(sprite_policial_morte);
+        // Limpeza dos bitmaps do chefe em caso de erro
+        al_destroy_bitmap(sprite_gatopreto); al_destroy_bitmap(sprite_prostituta_parada); al_destroy_bitmap(sprite_prostituta_trans1);
+        al_destroy_bitmap(sprite_demon_trans2); al_destroy_bitmap(sprite_demon_parado);
+        // --- NOVO: Limpeza dos novos bitmaps de combate ---
+        al_destroy_bitmap(sprite_demon_ataque); al_destroy_bitmap(sprite_demon_dano); al_destroy_bitmap(sprite_demon_morte); al_destroy_bitmap(sprite_demon_projetil);
         return false;
     }
     fprintf(stderr, "DEBUG: Todos os bitmaps e áudios carregados com sucesso.\n");
@@ -361,6 +476,10 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
         al_destroy_bitmap(sprite_placa_radar);
         al_destroy_bitmap(sprite_2reais); al_destroy_bitmap(sprite_5reais); al_destroy_bitmap(sprite_10reais);
         al_destroy_bitmap(sprite_policial_parado); al_destroy_bitmap(sprite_policial_arremesso); al_destroy_bitmap(sprite_explosao);
+        al_destroy_bitmap(sprite_policial_morte);
+        // NOVO: Limpeza dos bitmaps do chefe em caso de erro
+        al_destroy_bitmap(sprite_gatopreto); al_destroy_bitmap(sprite_prostituta_parada); al_destroy_bitmap(sprite_prostituta_trans1);
+        al_destroy_bitmap(sprite_demon_trans2); al_destroy_bitmap(sprite_demon_parado);
         return false;
     }
     al_set_sample_instance_playmode(instancia_som_verdebalaraio, ALLEGRO_PLAYMODE_LOOP);
@@ -413,7 +532,7 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     int frame_largura_policial_arremesso = al_get_bitmap_width(sprite_policial_arremesso) / frame_total_policial_arremesso;
     int frame_largura_policial_morte = al_get_bitmap_width(sprite_policial_morte) / frame_total_policial_morte;
     int frame_largura_explosao = al_get_bitmap_width(sprite_explosao) / frame_total_explosao;
-    int frame_altura_explosao = al_get_bitmap_height(sprite_explosao);
+    int frame_altura_explosao = al_get_bitmap_height(sprite_explosao); // O sprite de explosão já tem todos os frames em uma linha
 
     int inimigo_largura_sprite_max = (frame_largura_inimigo_parado > frame_largura_inimigo_andando) ? frame_largura_inimigo_parado : frame_largura_inimigo_andando;
     if (frame_largura_inimigo_morte > inimigo_largura_sprite_max) {
@@ -444,13 +563,17 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     float prot_attack_hitbox_width = 50 * escala_personagens;
     float prot_attack_hitbox_height = 80.0 * escala_personagens;
 
-    // --- Propriedades da Garrafa ---
+    // --- Propriedades da Garrafa e Projétil do Chefe ---
     int garrafa_largura_original = al_get_bitmap_width(sprite_garrafa);
     int garrafa_altura_original = al_get_bitmap_height(sprite_garrafa);
     float escala_garrafa = 1.0;
     float garrafa_hitbox_scale = 0.8;
     float garrafa_hitbox_width = garrafa_largura_original * escala_garrafa * garrafa_hitbox_scale;
     float garrafa_hitbox_height = garrafa_altura_original * escala_garrafa * garrafa_hitbox_scale;
+    // --- NOVO: Projétil do Chefe ---
+    int boss_proj_largura_original = al_get_bitmap_width(sprite_demon_projetil);
+    int boss_proj_altura_original = al_get_bitmap_height(sprite_demon_projetil);
+    float escala_boss_proj = 2.0;
 
     // --- Propriedades de Obstáculos ---
     float escala_obstaculo_sacos = 0.1;
@@ -473,16 +596,24 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     float tpf_especial = 1.0 / 15.0;
     float tpf_ataque1 = 1.0 / 10.0;
     float tpf_arremesso = 1.0 / 8.0;
-    // TPF Inimigos
     float tpf_inimigo_parado = 1.0 / 8.0;
     float tpf_inimigo_andando = 1.0 / 10.0;
     float tpf_inimigo_ataque = 1.0 / 8.0;
     float tpf_inimigo_morte = 1.0 / 8.0;
-    // NOVO: TPF Policial
     float tpf_policial_parado = 1.0 / 8.0;
     float tpf_policial_arremesso = 1.0 / 12.0;
     float tpf_explosao = 1.0 / 15.0;
-    float tpf_policial_morte = 1.0 / 8.0; // Velocidade da animação de morte
+    float tpf_policial_morte = 1.0 / 8.0;
+
+    // --- ALTERADO: TPFs para Animações do Chefe ---
+    float tpf_boss_parada = 1.0 / 5.0;
+    float tpf_boss_trans1 = 1.0 / 12.0;
+    float tpf_boss_trans2 = 1.0 / 12.0;
+    float tpf_boss_demonio_idle = 1.0 / 8.0;
+    // --- NOVOS TPFs do Chefe ---
+    float tpf_boss_ataque = 1.0 / 10.0;
+    float tpf_boss_dano = 1.0 / 12.0;
+    float tpf_boss_morte = 1.0 / 8.0;
 
     // --- Acumuladores de Tempo para Animações ---
     float acc_parado = 0, acc_andando = 0, acc_correndo = 0, acc_pulando = 0, acc_agachado = 0, acc_especial = 0, acc_ataque1 = 0;
@@ -514,39 +645,44 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     float vel_y = 0.0, gravidade = 0.5, vel_x_pulo = 0.0;
     float current_ground_y = personagem_y_base;
 
-    // --- Inicialização de Garrafas e Granadas ---
+    // --- Inicialização de Garrafas, Granadas e Projéteis do Chefe ---
     Garrafa garrafas[MAX_GARRAFAS];
-    Granada granadas[MAX_GRANADAS]; // NOVO
+    Granada granadas[MAX_GRANADAS];
+    BossProjectile boss_projectiles[MAX_BOSS_PROJECTILES]; // --- NOVO ---
     float garrafa_velocidade_angular = 0.2;
+
     for (int i = 0; i < MAX_GARRAFAS; i++) {
         garrafas[i].ativa = false;
     }
-    for (int i = 0; i < MAX_GRANADAS; i++) { // NOVO
+    for (int i = 0; i < MAX_GRANADAS; i++) {
         granadas[i].ativa = false;
     }
+    // --- NOVO ---
+    for (int i = 0; i < MAX_BOSS_PROJECTILES; i++) {
+        boss_projectiles[i].ativa = false;
+    }
+
 
     // --- Inicialização de Inimigos ---
     Inimigo inimigos[MAX_INIMIGOS];
+    // (Lógica de spawn e inicialização de inimigos - sem alterações)
     float tempo_para_spawn_inimigo = 2.0;
     float min_intervalo_spawn_inimigo = 2.0;
     float max_intervalo_spawn_inimigo = 5.0;
-
     float inimigo_velocidade_parado_base = -0.5;
     float inimigo_velocidade_andando_base = -2.5;
     float inimigo_velocidade_ataque_base = 0.0;
-    // Distâncias de IA
     float noia_distancia_deteccao = 500.0;
     float noia_distancia_ataque = 180.0;
-    float policial_distancia_deteccao = 800.0; // Policial detecta de mais longe
-    float policial_distancia_ataque = 700.0;   // E ataca de mais longe
-
+    float policial_distancia_deteccao = 800.0;
+    float policial_distancia_ataque = 700.0;
     for (int i = 0; i < MAX_INIMIGOS; i++) {
         inimigos[i].ativa = false;
-        // O resto da inicialização acontece no spawn
     }
 
     // --- Inicialização de Obstáculos ---
     Obstaculo obstaculos[MAX_OBSTACULOS];
+    // (Lógica de spawn e inicialização de obstáculos - sem alterações)
     struct {
         ALLEGRO_BITMAP *sprite;
         float scale;
@@ -556,48 +692,86 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
         {sprite_placa_radar, escala_placa_radar, true}
     };
     int num_obstacle_types = sizeof(obstacle_types) / sizeof(obstacle_types[0]);
-
     float proximo_ponto_spawn_obstaculo = LARGURA;
     float min_distancia_entre_obstaculos = 500.0;
     float variacao_distancia_obstaculos = 600.0;
-
     for (int i = 0; i < MAX_OBSTACULOS; i++) {
         obstaculos[i].ativa = true;
-
         int type_index = rand() % num_obstacle_types;
         obstaculos[i].sprite_bitmap = obstacle_types[type_index].sprite;
         obstaculos[i].only_crouch_pass = obstacle_types[type_index].crouch_pass;
-
         float current_scale = obstacle_types[type_index].scale;
         int original_width = al_get_bitmap_width(obstaculos[i].sprite_bitmap);
         int original_height = al_get_bitmap_height(obstaculos[i].sprite_bitmap);
-
         obstaculos[i].width = original_width * current_scale;
         obstaculos[i].height = original_height * current_scale;
-
         obstaculos[i].x = proximo_ponto_spawn_obstaculo + (float)rand() / RAND_MAX * variacao_distancia_obstaculos;
         obstaculos[i].y = personagem_y_base + (frame_altura * escala_personagens) - obstaculos[i].height;
-
         proximo_ponto_spawn_obstaculo = obstaculos[i].x + obstaculos[i].width + min_distancia_entre_obstaculos;
     }
 
     // --- Inicialização de Notas de Dinheiro ---
     MoneyNote money_notes[MAX_MONEY_NOTES];
+    // (Lógica de spawn e inicialização de dinheiro - sem alterações)
     ALLEGRO_BITMAP *money_sprites[] = {sprite_2reais, sprite_5reais, sprite_10reais};
     int money_values[] = {2, 5, 10};
     int num_money_types = sizeof(money_sprites) / sizeof(money_sprites[0]);
     float time_to_spawn_money = MONEY_NOTE_SPAWN_INTERVAL;
-
     for (int i = 0; i < MAX_MONEY_NOTES; i++) {
         money_notes[i].ativa = false;
     }
 
+    // --- ALTERADO: Inicialização da Entrada do Chefe e do Chefe ---
+    BossEntrance entrance;
+    entrance.sprite_bitmap = sprite_gatopreto;
+    entrance.x = BOSS_SPAWN_X;
+    float entrance_original_w = al_get_bitmap_width(entrance.sprite_bitmap);
+    float entrance_original_h = al_get_bitmap_height(entrance.sprite_bitmap);
+    float entrance_scale = (float)ALTURA / entrance_original_h;
+    entrance.width = entrance_original_w * entrance_scale;
+    entrance.height = ALTURA;
+    entrance.y = 0;
 
-    // --- Configuração do Timer do Jogo ---
+    Boss boss;
+    boss.ativa = false;
+    boss.estado = BOSS_INVISIVEL;
+    boss.escala = 2.8;
+    // --- NOVO: Inicialização de combate ---
+    boss.health = MAX_BOSS_HEALTH;
+    boss.attack_cooldown = BOSS_ATTACK_COOLDOWN;
+    boss.invulnerability_timer = 0.0f;
+
+    // Sprites
+    boss.sprite_parada = sprite_prostituta_parada;
+    boss.sprite_trans1 = sprite_prostituta_trans1;
+    boss.sprite_trans2 = sprite_demon_trans2;
+    boss.sprite_demonio_idle = sprite_demon_parado;
+    // --- NOVOS SPRITES ---
+    boss.sprite_demonio_ataque = sprite_demon_ataque;
+    boss.sprite_demonio_dano = sprite_demon_dano;
+    boss.sprite_demonio_morte = sprite_demon_morte;
+
+    // Dimensões dos frames do chefe
+    boss.frame_largura_parada = al_get_bitmap_width(boss.sprite_parada) / BOSS_PROSTITUTA_PARADA_FRAME_COUNT;
+    boss.frame_altura_parada = al_get_bitmap_height(boss.sprite_parada);
+    boss.frame_largura_trans1 = al_get_bitmap_width(boss.sprite_trans1) / BOSS_PROSTITUTA_TRANS1_FRAME_COUNT;
+    boss.frame_altura_trans1 = al_get_bitmap_height(boss.sprite_trans1);
+    boss.frame_largura_trans2 = al_get_bitmap_width(boss.sprite_trans2) / BOSS_DEMON_TRANS2_FRAME_COUNT;
+    boss.frame_altura_trans2 = al_get_bitmap_height(boss.sprite_trans2);
+    boss.frame_largura_demonio_idle = al_get_bitmap_width(boss.sprite_demonio_idle) / BOSS_DEMON_IDLE_FRAME_COUNT;
+    boss.frame_altura_demonio_idle = al_get_bitmap_height(boss.sprite_demonio_idle);
+    // --- NOVAS DIMENSÕES ---
+    boss.frame_largura_demonio_ataque = al_get_bitmap_width(boss.sprite_demonio_ataque) / BOSS_DEMON_ATTACK_FRAME_COUNT;
+    boss.frame_altura_demonio_ataque = al_get_bitmap_height(boss.sprite_demonio_ataque);
+    boss.frame_largura_demonio_dano = al_get_bitmap_width(boss.sprite_demonio_dano) / BOSS_DEMON_DANO_FRAME_COUNT;
+    boss.frame_altura_demonio_dano = al_get_bitmap_height(boss.sprite_demonio_dano);
+    boss.frame_largura_demonio_morte = al_get_bitmap_width(boss.sprite_demonio_morte) / BOSS_DEMON_MORTE_FRAME_COUNT;
+    boss.frame_altura_demonio_morte = al_get_bitmap_height(boss.sprite_demonio_morte);
+
+
+    // --- Configuração do Timer e Fila de Eventos ---
     ALLEGRO_TIMER *timer = al_create_timer(1.0 / 60.0);
     al_start_timer(timer);
-
-    // --- Registro de Fontes de Eventos ---
     al_register_event_source(fila, al_get_display_event_source(janela));
     al_register_event_source(fila, al_get_keyboard_event_source());
     al_register_event_source(fila, al_get_timer_event_source(timer));
@@ -644,9 +818,9 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                 if (protagonista_estado == PROT_NORMAL) {
                     if (ev.keyboard.keycode == ALLEGRO_KEY_UP && !pulando && !agachando && !atacando && !arremessando) {
                         pulando = true; vel_y = -10.0; frame_pulando = 0; acc_pulando = 0; especial_ativo = false; especial_finalizado = false;
-                        ALLEGRO_KEYBOARD_STATE estado; al_get_keyboard_state(&estado);
-                        if (al_key_down(&estado, ALLEGRO_KEY_RIGHT)) vel_x_pulo = velocidade;
-                        else if (al_key_down(&estado, ALLEGRO_KEY_LEFT)) vel_x_pulo = -velocidade;
+                        ALLEGRO_KEYBOARD_STATE estado_kb; al_get_keyboard_state(&estado_kb);
+                        if (al_key_down(&estado_kb, ALLEGRO_KEY_RIGHT)) vel_x_pulo = velocidade;
+                        else if (al_key_down(&estado_kb, ALLEGRO_KEY_LEFT)) vel_x_pulo = -velocidade;
                         else vel_x_pulo = 0;
                         current_ground_y = personagem_y_base;
                     }
@@ -659,10 +833,11 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                     else if (ev.keyboard.keycode == ALLEGRO_KEY_Q && !agachando && !especial_ativo && !atacando && !arremessando) { arremessando = true; frame_arremesso = 0; acc_arremesso = 0; }
                     else if (ev.keyboard.keycode == ALLEGRO_KEY_B) {
                         float prot_world_x_center = personagem_x + (frame_largura_parado * escala_personagens) / 2.0 + deslocamento_x;
-                        float npc_world_x_center = traficante.x + (traficante.largura_sprite * escala_traficante) / 2.0;
-                        float distance = fabs(prot_world_x_center - npc_world_x_center);
 
-                        if (traficante.ativa && distance < NPC_INTERACTION_DISTANCE) {
+                        // Lógica de interação com o Traficante
+                        float npc_world_x_center = traficante.x + (traficante.largura_sprite * escala_traficante) / 2.0;
+                        float distance_to_npc = fabs(prot_world_x_center - npc_world_x_center);
+                        if (traficante.ativa && distance_to_npc < NPC_INTERACTION_DISTANCE) {
                             if (player_money >= NPC_HEAL_COST) {
                                 if (protagonist_health >= MAX_PROTAGONIST_HEALTH + NPC_HEAL_AMOUNT) {
                                     fprintf(stderr, "DEBUG: Vida já está no máximo (120 HP)! Não é possível comprar mais pó.\n");
@@ -678,6 +853,19 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                                 fprintf(stderr, "DEBUG: Sem dinheiro suficiente para comprar! Dinheiro atual: R$%d, Custo: R$%d\n", player_money, NPC_HEAL_COST);
                             }
                         }
+
+                        // Lógica de Interação com o Chefe
+                        if (boss.ativa && boss.estado == BOSS_PARADA) {
+                            float boss_world_x_center = boss.x + (boss.frame_largura_parada * boss.escala) / 2.0;
+                            float distance_to_boss = fabs(prot_world_x_center - boss_world_x_center);
+
+                            if (distance_to_boss < BOSS_INTERACTION_DISTANCE) {
+                                fprintf(stderr, "DEBUG: Jogador interagiu com o chefe! Iniciando transformação.\n");
+                                boss.estado = BOSS_TRANSFORMANDO;
+                                boss.frame_atual = 0;
+                                boss.acc_animacao = 0;
+                            }
+                        }
                     }
                 }
             }
@@ -689,7 +877,6 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                 }
             }
         }
-
         else if (ev.type == ALLEGRO_EVENT_TIMER) {
             float delta_deslocamento_x = deslocamento_x - deslocamento_x_anterior;
             deslocamento_x_anterior = deslocamento_x;
@@ -847,7 +1034,20 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                 }
             }
 
-            // --- NOVO: Atualização das Granadas ---
+            // --- NOVO: Atualização dos Projéteis do Chefe ---
+            for (int i = 0; i < MAX_BOSS_PROJECTILES; i++) {
+                if (boss_projectiles[i].ativa) {
+                    boss_projectiles[i].x += boss_projectiles[i].vel_x;
+                    boss_projectiles[i].angulo += 0.2f; // Gira o projétil
+
+                    // Desativa se sair da tela
+                    if (boss_projectiles[i].x - deslocamento_x < -100 || boss_projectiles[i].x - deslocamento_x > LARGURA + 100) {
+                        boss_projectiles[i].ativa = false;
+                    }
+                }
+            }
+
+            // --- Atualização das Granadas ---
             for (int i = 0; i < MAX_GRANADAS; i++) {
                 if (granadas[i].ativa) {
                     if (!granadas[i].explodindo) {
@@ -899,7 +1099,7 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                         inimigos[i].animacao_morte_finalizada = false;
                         inimigos[i].inimigo_pode_dar_dano = true;
                         inimigos[i].attack_cooldown = 0;
-                        
+
                         // Inicialização específica por tipo
                         if (inimigos[i].type == NOIA) {
                             inimigos[i].vel_x = inimigo_velocidade_parado_base;
@@ -914,15 +1114,15 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                             inimigos[i].hitbox_width = (frame_largura_policial_parado - 100) * escala_personagens;
                             inimigos[i].hitbox_height = (frame_altura - 20) * escala_personagens;
                         }
-                        
+
                         tempo_para_spawn_inimigo = min_intervalo_spawn_inimigo +
-                                                   ((float)rand() / RAND_MAX) * (max_intervalo_spawn_inimigo - min_intervalo_spawn_inimigo);
+                                                     ((float)rand() / RAND_MAX) * (max_intervalo_spawn_inimigo - min_intervalo_spawn_inimigo);
                         fprintf(stderr, "DEBUG: Inimigo %d (Tipo: %d) SPAWNADO.\n", i, inimigos[i].type);
                         break;
                     }
                 }
             }
-            
+
             // --- Lógica de Spawn e Atualização de Dinheiro ---
             time_to_spawn_money -= 1.0 / 60.0;
             if (time_to_spawn_money <= 0) {
@@ -953,7 +1153,7 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                     }
                 }
             }
-            
+
             // --- Lógica de Reciclagem de Objetos ---
             float max_x_existente = deslocamento_x + LARGURA;
 
@@ -1019,18 +1219,161 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                 }
             }
 
-            // --- Atualiza Estados, Movimento e Verifica Colisões dos Inimigos (ATUALIZADA) ---
+            // --- Lógica de Ativação e Atualização do Chefe ---
+            // Verifica se o jogador alcançou a área do chefe
+            if (!boss.ativa && deslocamento_x >= BOSS_SPAWN_X - LARGURA) {
+                boss.ativa = true;
+                boss.estado = BOSS_PARADA;
+                boss.frame_atual = 0;
+                boss.acc_animacao = 0;
+                // Posiciona o chefe um pouco à frente da entrada
+                boss.x = entrance.x + 150;
+                boss.y = personagem_y_base + (frame_altura * escala_personagens) - (boss.frame_altura_parada * boss.escala);
+                fprintf(stderr, "DEBUG: Chefe ativado na posição X: %.2f\n", boss.x);
+            }
+
+            // Se o chefe estiver ativo, atualiza sua lógica
+            if (boss.ativa) {
+                 // --- NOVO: Atualiza cooldowns do chefe ---
+                if(boss.attack_cooldown > 0) {
+                    boss.attack_cooldown -= 1.0 / 60.0;
+                }
+                if(boss.invulnerability_timer > 0) {
+                    boss.invulnerability_timer -= 1.0 / 60.0;
+                }
+
+                switch(boss.estado) {
+                    case BOSS_PARADA:
+                        // Animação da prostituta parada
+                        boss.acc_animacao += 1.0 / 60.0;
+                        if (boss.acc_animacao >= tpf_boss_parada) {
+                            boss.acc_animacao -= tpf_boss_parada;
+                            boss.frame_atual = (boss.frame_atual + 1) % BOSS_PROSTITUTA_PARADA_FRAME_COUNT;
+                        }
+                        // A LÓGICA DE INTERAÇÃO COM O CHEFE FOI MOVIDA PARA O EVENTO DE TECLADO 'B'
+                        break;
+
+                    case BOSS_TRANSFORMANDO:
+                        // Animação da transformação (parte 1)
+                        boss.acc_animacao += 1.0 / 60.0;
+                        if (boss.acc_animacao >= tpf_boss_trans1) {
+                            boss.acc_animacao -= tpf_boss_trans1;
+                            if (boss.frame_atual < BOSS_PROSTITUTA_TRANS1_FRAME_COUNT - 1) {
+                                boss.frame_atual++;
+                            } else {
+                                // A animação terminou. Transiciona para a próxima parte da transformação.
+                                fprintf(stderr, "DEBUG: Fim da transformação parte 1. Iniciando parte 2.\n");
+                                boss.estado = BOSS_TRANSFORMANDO_2; // Transiciona para a segunda parte
+                                boss.frame_atual = 0; // Reinicia o frame para a próxima animação
+                                boss.acc_animacao = 0;
+                            }
+                        }
+                        break;
+
+                    // --- NOVO: Estado de transformação parte 2 ---
+                    case BOSS_TRANSFORMANDO_2:
+                        boss.acc_animacao += 1.0 / 60.0;
+                        if (boss.acc_animacao >= tpf_boss_trans2) {
+                            boss.acc_animacao -= tpf_boss_trans2;
+                            if (boss.frame_atual < BOSS_DEMON_TRANS2_FRAME_COUNT - 1) {
+                                boss.frame_atual++;
+                            } else {
+                                // A animação da segunda transformação terminou. Transiciona para o idle do demônio.
+                                fprintf(stderr, "DEBUG: Fim da transformação parte 2. Assumindo forma de demônio (IDLE).\n");
+                                boss.estado = BOSS_DEMONIO_IDLE;
+                                boss.frame_atual = 0; // Reinicia o frame para a animação idle do demônio
+                                boss.acc_animacao = 0;
+                                // Ajusta a posição Y para a nova altura do sprite do demônio, se necessário
+                                boss.y = personagem_y_base + (frame_altura * escala_personagens) - (boss.frame_altura_demonio_idle * boss.escala);
+                            }
+                        }
+                        break;
+
+                    case BOSS_DEMONIO_IDLE:
+                        // Animação de idle para o chefe demônio
+                        boss.acc_animacao += 1.0 / 60.0;
+                        if (boss.acc_animacao >= tpf_boss_demonio_idle) {
+                            boss.acc_animacao -= tpf_boss_demonio_idle;
+                            boss.frame_atual = (boss.frame_atual + 1) % BOSS_DEMON_IDLE_FRAME_COUNT;
+                        }
+                        // --- NOVO: Lógica para iniciar ataque ---
+                        if(boss.attack_cooldown <= 0) {
+                            boss.estado = BOSS_DEMONIO_ATACANDO;
+                            boss.frame_atual = 0;
+                            boss.acc_animacao = 0;
+                            fprintf(stderr, "DEBUG: Chefe iniciando ataque!\n");
+                        }
+                        break;
+                    // --- NOVO: LÓGICA DE COMBATE DO CHEFE ---
+                    case BOSS_DEMONIO_ATACANDO:
+                        boss.acc_animacao += 1.0 / 60.0;
+                        if (boss.acc_animacao >= tpf_boss_ataque) {
+                            boss.acc_animacao -= tpf_boss_ataque;
+                            if (boss.frame_atual < BOSS_DEMON_ATTACK_FRAME_COUNT - 1) {
+                                boss.frame_atual++;
+                                // Lança o projétil em um frame específico
+                                if (boss.frame_atual == 4) {
+                                     for(int i = 0; i < MAX_BOSS_PROJECTILES; i++) {
+                                        if(!boss_projectiles[i].ativa) {
+                                            boss_projectiles[i].ativa = true;
+                                            boss_projectiles[i].x = boss.x + 50; // Posição no mundo, ajustada para sair da frente
+                                            boss_projectiles[i].y = boss.y + (boss.frame_altura_demonio_ataque * boss.escala / 2);
+                                            boss_projectiles[i].vel_x = -12.0f; // Velocidade para a esquerda
+                                            boss_projectiles[i].angulo = 0;
+                                            fprintf(stderr, "DEBUG: Chefe lançou projétil %d.\n", i);
+                                            break;
+                                        }
+                                     }
+                                }
+                            } else {
+                                // Fim da animação de ataque
+                                boss.estado = BOSS_DEMONIO_IDLE;
+                                boss.frame_atual = 0;
+                                boss.acc_animacao = 0;
+                                boss.attack_cooldown = BOSS_ATTACK_COOLDOWN; // Reinicia o cooldown
+                            }
+                        }
+                        break;
+                    case BOSS_DEMONIO_DANO:
+                        boss.acc_animacao += 1.0 / 60.0;
+                        if (boss.acc_animacao >= tpf_boss_dano) {
+                             boss.acc_animacao -= tpf_boss_dano;
+                             if(boss.frame_atual < BOSS_DEMON_DANO_FRAME_COUNT - 1) {
+                                 boss.frame_atual++;
+                             } else {
+                                 // Fim da animação de dano
+                                 boss.estado = BOSS_DEMONIO_IDLE;
+                                 boss.frame_atual = 0;
+                                 boss.acc_animacao = 0;
+                             }
+                        }
+                        break;
+                    case BOSS_DEMONIO_MORRENDO:
+                        boss.acc_animacao += 1.0 / 60.0;
+                        if (boss.acc_animacao >= tpf_boss_morte) {
+                             boss.acc_animacao -= tpf_boss_morte;
+                             if(boss.frame_atual < BOSS_DEMON_MORTE_FRAME_COUNT - 1) {
+                                 boss.frame_atual++;
+                             } else {
+                                 // Fim da animação de morte
+                                 boss.ativa = false; // Desativa o chefe permanentemente
+                                 fprintf(stderr, "DEBUG: CHEFE DERROTADO!\n");
+                             }
+                        }
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+            // --- Lógica de Colisões ---
             float prot_hb_x = personagem_x + prot_hitbox_offset_x;
             float prot_hb_y = personagem_y + prot_hitbox_offset_y;
             float prot_hb_w = prot_hitbox_width;
-            float current_prot_hitbox_height = prot_hitbox_height;
-            if (agachando) {
-                current_prot_hitbox_height = prot_crouch_hitbox_height;
-                prot_hb_y = personagem_y + (prot_hitbox_height - prot_crouch_hitbox_height) + prot_hitbox_offset_y;
-            } else {
-                prot_hb_y = personagem_y + prot_hitbox_offset_y;
-            }
-            
+            float current_prot_hitbox_height = agachando ? prot_crouch_hitbox_height : prot_hitbox_height;
+            if(agachando) prot_hb_y = personagem_y + (prot_hitbox_height - prot_crouch_hitbox_height) + prot_hitbox_offset_y;
+
+            // Colisão Inimigos vs Protagonista
             float prot_attack_hb_x = personagem_x + prot_attack_hitbox_offset_x;
             float prot_attack_hb_y = personagem_y + prot_attack_hitbox_offset_y;
 
@@ -1117,7 +1460,7 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                                         overlap_amount = (other_inimigo_world_hb_x + other_inimigo_hb_w) - inimigo_world_hb_x;
                                         inimigos[i].x += overlap_amount;
                                     }
-                                    inimigo_world_hb_x = inimigos[i].x + inimigos[i].hitbox_offset_x; 
+                                    inimigo_world_hb_x = inimigos[i].x + inimigos[i].hitbox_offset_x;
                                 }
                             }
                         }
@@ -1153,7 +1496,7 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                             }
                         }
                     }
-                    
+
                     // --- ATUALIZAÇÃO DE ANIMAÇÃO ---
                     float tpf_current_inimigo = 0;
                     int frame_total_current_inimigo = 0;
@@ -1166,7 +1509,7 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                             case INIMIGO_MORRENDO: tpf_current_inimigo = tpf_inimigo_morte; frame_total_current_inimigo = frame_total_inimigo_morte; break;
                         }
                     } else { // POLICIAL
-                        switch(inimigos[i].estado) {
+                         switch(inimigos[i].estado) {
                             case INIMIGO_PARADO:
                             case INIMIGO_ANDANDO: // Usa a mesma animação parada para andar
                                 tpf_current_inimigo = tpf_policial_parado;
@@ -1176,7 +1519,7 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                                 tpf_current_inimigo = tpf_policial_arremesso;
                                 frame_total_current_inimigo = frame_total_policial_arremesso;
                                 break;
-                            case INIMIGO_MORRENDO: // Reusa a morte do noia por enquanto
+                            case INIMIGO_MORRENDO:
                                 tpf_current_inimigo = tpf_policial_morte; // Usa o tempo por frame do policial
                                 frame_total_current_inimigo = frame_total_policial_morte; // Usa o total de frames do policial
                                 break;
@@ -1187,7 +1530,7 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                         inimigos[i].acc_animacao -= tpf_current_inimigo;
                         if (inimigos[i].frame_atual < frame_total_current_inimigo - 1) {
                             inimigos[i].frame_atual++;
-                            // NOVO: Lançar granada em um frame específico
+                            // NOVO: Lançar granada em um frame específico da animação de ataque do policial
                             if (inimigos[i].type == POLICIAL && inimigos[i].estado == INIMIGO_ATACANDO && inimigos[i].frame_atual == 5) {
                                 for(int g = 0; g < MAX_GRANADAS; g++) {
                                     if(!granadas[g].ativa) {
@@ -1245,31 +1588,103 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
             // NOVO: Colisão Explosão da Granada vs Protagonista
             for (int i = 0; i < MAX_GRANADAS; i++) {
                 if (granadas[i].ativa && granadas[i].explodindo && !granadas[i].dano_aplicado && protagonista_estado == PROT_NORMAL && !protagonist_invulnerable) {
-                     float explosao_hb_w = frame_largura_explosao * escala_personagens;
-                     float explosao_hb_h = frame_altura_explosao * escala_personagens;
-                     float explosao_hb_x = (granadas[i].x - deslocamento_x) - explosao_hb_w / 2.0;
-                     float explosao_hb_y = granadas[i].y - explosao_hb_h / 2.0;
-                    
-                     if (check_collision(prot_hb_x, prot_hb_y, prot_hb_w, current_prot_hitbox_height,
-                                          explosao_hb_x, explosao_hb_y, explosao_hb_w, explosao_hb_h)) {
-                         protagonist_health -= GRENADE_DAMAGE;
-                         granadas[i].dano_aplicado = true;
-                         fprintf(stderr, "PROTAGONISTA ATINGIDO PELA GRANADA! Vida: %d\n", protagonist_health);
+                    float explosao_hb_w = frame_largura_explosao * escala_personagens;
+                    float explosao_hb_h = frame_altura_explosao * escala_personagens;
+                    float explosao_hb_x = (granadas[i].x - deslocamento_x) - explosao_hb_w / 2.0;
+                    float explosao_hb_y = granadas[i].y - explosao_hb_h / 2.0;
 
-                         protagonist_invulnerable = true;
-                         protagonist_invulnerability_timer = PROTAGONIST_INVULNERABILITY_DURATION;
-                         protagonist_blink_timer = 0.0;
-                         protagonist_visible = false;
+                    if (check_collision(prot_hb_x, prot_hb_y, prot_hb_w, current_prot_hitbox_height,
+                                        explosao_hb_x, explosao_hb_y, explosao_hb_w, explosao_hb_h)) {
+                        protagonist_health -= GRENADE_DAMAGE;
+                        granadas[i].dano_aplicado = true;
+                        fprintf(stderr, "PROTAGONISTA ATINGIDO PELA GRANADA! Vida: %d\n", protagonist_health);
 
-                         if (protagonist_health <= 0) {
-                             protagonista_estado = PROT_MORRENDO;
-                             personagem_frame_morte = 0;
-                             personagem_acc_morte = 0;
-                             personagem_morte_animacao_finalizada = false;
-                         }
-                     }
+                        protagonist_invulnerable = true;
+                        protagonist_invulnerability_timer = PROTAGONIST_INVULNERABILITY_DURATION;
+                        protagonist_blink_timer = 0.0;
+                        protagonist_visible = false;
+
+                        if (protagonist_health <= 0) {
+                            protagonista_estado = PROT_MORRENDO;
+                            personagem_frame_morte = 0;
+                            personagem_acc_morte = 0;
+                            personagem_morte_animacao_finalizada = false;
+                        }
+                    }
                 }
             }
+
+            // --- NOVO: Colisão Jogador vs Chefe ---
+            if (boss.ativa && boss.estado >= BOSS_DEMONIO_IDLE && boss.estado != BOSS_DEMONIO_MORRENDO && boss.invulnerability_timer <= 0) {
+                float boss_hb_w = boss.frame_largura_demonio_idle * boss.escala * 0.5; // Hitbox um pouco menor que o sprite
+                float boss_hb_h = boss.frame_altura_demonio_idle * boss.escala * 0.8;
+                float boss_screen_x = boss.x - deslocamento_x;
+                float boss_hb_x = boss_screen_x + (boss.frame_largura_demonio_idle * boss.escala * 0.25);
+                float boss_hb_y = boss.y + (boss.frame_altura_demonio_idle * boss.escala * 0.1);
+
+                // Colisão: Garrafa do jogador -> Chefe
+                for (int j = 0; j < MAX_GARRAFAS; j++) {
+                    if (garrafas[j].ativa) {
+                        float garrafa_hb_x = garrafas[j].x - deslocamento_x - garrafa_hitbox_width / 2.0;
+                        float garrafa_hb_y = garrafas[j].y - garrafa_hitbox_height / 2.0;
+                        if(check_collision(garrafa_hb_x, garrafa_hb_y, garrafa_hitbox_width, garrafa_hitbox_height, boss_hb_x, boss_hb_y, boss_hb_w, boss_hb_h)) {
+                            garrafas[j].ativa = false;
+                            boss.health -= PLAYER_ATTACK_DAMAGE_TO_BOSS;
+                            boss.estado = BOSS_DEMONIO_DANO;
+                            boss.frame_atual = 0;
+                            boss.acc_animacao = 0;
+                            boss.invulnerability_timer = 0.5f; // Meio segundo de invulnerabilidade
+                            fprintf(stderr, "DEBUG: Chefe atingido por garrafa! Vida: %d\n", boss.health);
+                        }
+                    }
+                }
+
+                // Colisão: Ataque especial do jogador -> Chefe
+                if (atacando) {
+                    float prot_attack_hb_x = personagem_x + prot_attack_hitbox_offset_x;
+                    float prot_attack_hb_y = personagem_y + prot_attack_hitbox_offset_y;
+                    if(check_collision(prot_attack_hb_x, prot_attack_hb_y, prot_attack_hitbox_width, prot_attack_hitbox_height, boss_hb_x, boss_hb_y, boss_hb_w, boss_hb_h)) {
+                        boss.health -= PLAYER_ATTACK_DAMAGE_TO_BOSS;
+                        boss.estado = BOSS_DEMONIO_DANO;
+                        boss.frame_atual = 0;
+                        boss.acc_animacao = 0;
+                        boss.invulnerability_timer = 0.5f;
+                        fprintf(stderr, "DEBUG: Chefe atingido por ataque especial! Vida: %d\n", boss.health);
+                    }
+                }
+
+                // Checa se o chefe morreu
+                if(boss.health <= 0) {
+                    boss.estado = BOSS_DEMONIO_MORRENDO;
+                    boss.frame_atual = 0;
+                    boss.acc_animacao = 0;
+                }
+            }
+
+            // --- NOVO: Colisão Projétil do Chefe vs Jogador ---
+            for (int i = 0; i < MAX_BOSS_PROJECTILES; i++) {
+                if (boss_projectiles[i].ativa && protagonista_estado == PROT_NORMAL && !protagonist_invulnerable) {
+                    float proj_hb_w = boss_proj_largura_original * escala_boss_proj;
+                    float proj_hb_h = boss_proj_altura_original * escala_boss_proj;
+                    float proj_screen_x = boss_projectiles[i].x - deslocamento_x;
+
+                    if((check_collision(prot_hb_x, prot_hb_y, prot_hb_w, current_prot_hitbox_height, proj_screen_x, boss_projectiles[i].y, proj_hb_w, proj_hb_h)) && !agachando) {
+                        boss_projectiles[i].ativa = false;
+                        protagonist_health -= BOSS_PROJECTILE_DAMAGE;
+                        fprintf(stderr, "JOGADOR ATINGIDO PELO CHEFE! Vida: %d\n", protagonist_health);
+
+                        protagonist_invulnerable = true;
+                        protagonist_invulnerability_timer = PROTAGONIST_INVULNERABILITY_DURATION;
+                        protagonist_blink_timer = 0.0;
+                        protagonist_visible = false;
+
+                        if(protagonist_health <= 0) {
+                            protagonista_estado = PROT_MORRENDO;
+                        }
+                    }
+                }
+            }
+
 
             // --- Lógica de Colisão Protagonista-Obstáculo e Coleta de Dinheiro ---
             if (protagonista_estado == PROT_NORMAL) {
@@ -1367,29 +1782,29 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
             if (offset_x_bg < 0) offset_x_bg += bg_width;
 
             al_draw_scaled_bitmap(background,
-                                  offset_x_bg, 0,
-                                  bg_width - offset_x_bg, bg_height,
-                                  0, 0,
-                                  (float)(bg_width - offset_x_bg), (float)ALTURA, 0);
+                                 offset_x_bg, 0,
+                                 bg_width - offset_x_bg, bg_height,
+                                 0, 0,
+                                 (float)(bg_width - offset_x_bg), (float)ALTURA, 0);
 
             if ((bg_width - offset_x_bg) < LARGURA) {
                 al_draw_scaled_bitmap(background,
-                                      0, 0,
-                                      LARGURA - (bg_width - offset_x_bg), bg_height,
-                                      (float)(bg_width - offset_x_bg), 0,
-                                      (float)(LARGURA - (bg_width - offset_x_bg)), (float)ALTURA, 0);
+                                     0, 0,
+                                     LARGURA - (bg_width - offset_x_bg), bg_height,
+                                     (float)(bg_width - offset_x_bg), 0,
+                                     (float)(LARGURA - (bg_width - offset_x_bg)), (float)ALTURA, 0);
             }
-            
+
             // --- Desenha Obstáculos ---
             for (int i = 0; i < MAX_OBSTACULOS; i++) {
                 if (obstaculos[i].ativa) {
                     float draw_x = obstaculos[i].x - deslocamento_x;
                     al_draw_scaled_bitmap(obstaculos[i].sprite_bitmap,
-                                          0, 0,
-                                          al_get_bitmap_width(obstaculos[i].sprite_bitmap), al_get_bitmap_height(obstaculos[i].sprite_bitmap),
-                                          draw_x, obstaculos[i].y,
-                                          obstaculos[i].width, obstaculos[i].height,
-                                          0);
+                                         0, 0,
+                                         al_get_bitmap_width(obstaculos[i].sprite_bitmap), al_get_bitmap_height(obstaculos[i].sprite_bitmap),
+                                         draw_x, obstaculos[i].y,
+                                         obstaculos[i].width, obstaculos[i].height,
+                                         0);
                 }
             }
 
@@ -1397,11 +1812,11 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
             if (traficante.ativa) {
                 float draw_x = traficante.x - deslocamento_x;
                 al_draw_scaled_bitmap(sprite_traficante_parada,
-                                      traficante.frame_atual * traficante.largura_sprite, 0,
-                                      traficante.largura_sprite, traficante.altura_sprite,
-                                      draw_x, traficante.y,
-                                      traficante.largura_sprite * escala_traficante, traficante.altura_sprite * escala_traficante,
-                                      ALLEGRO_FLIP_HORIZONTAL);
+                                     traficante.frame_atual * traficante.largura_sprite, 0,
+                                     traficante.largura_sprite, traficante.altura_sprite,
+                                     draw_x, traficante.y,
+                                     traficante.largura_sprite * escala_traficante, traficante.altura_sprite * escala_traficante,
+                                     ALLEGRO_FLIP_HORIZONTAL);
 
                 float text_x = draw_x + (traficante.largura_sprite * escala_traficante) / 2.0;
                 float text_y = traficante.y + 70;
@@ -1411,14 +1826,79 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                 al_draw_textf(fonte, al_map_rgb(255, 255, 255), text_x, text_y + al_get_font_line_height(fonte) * 2, ALLEGRO_ALIGN_CENTER, "(+20 HP)");
                 al_draw_textf(fonte, al_map_rgb(255, 255, 255), text_x, text_y + al_get_font_line_height(fonte) * 3, ALLEGRO_ALIGN_CENTER, "R$%d", NPC_HEAL_COST);
             }
-            
+
+            // --- NOVO: Desenha a Entrada do Chefe e o Chefe ---
+            if (boss.ativa) {
+                // Desenha a entrada primeiro (para ficar atrás do chefe)
+                al_draw_scaled_bitmap(entrance.sprite_bitmap,
+                                     0, 0,
+                                     entrance_original_w, entrance_original_h,
+                                     entrance.x - deslocamento_x, entrance.y,
+                                     entrance.width, entrance.height,
+                                     0);
+
+                // Desenha o chefe com base no seu estado atual
+                float draw_x = boss.x - deslocamento_x;
+                float draw_y = boss.y;
+                ALLEGRO_BITMAP* current_boss_sprite = NULL;
+                int current_frame_w = 0, current_frame_h = 0;
+
+                switch(boss.estado) {
+                    case BOSS_PARADA:
+                        current_boss_sprite = boss.sprite_parada;
+                        current_frame_w = boss.frame_largura_parada; current_frame_h = boss.frame_altura_parada;
+                        break;
+
+                    case BOSS_TRANSFORMANDO:
+                        current_boss_sprite = boss.sprite_trans1;
+                        current_frame_w = boss.frame_largura_trans1; current_frame_h = boss.frame_altura_trans1;
+                        break;
+
+                    // --- NOVO: Desenha a segunda animação de transformação ---
+                    case BOSS_TRANSFORMANDO_2:
+                        current_boss_sprite = boss.sprite_trans2;
+                        current_frame_w = boss.frame_largura_trans2; current_frame_h = boss.frame_altura_trans2;
+                        break;
+
+                    // --- NOVO: Desenha o chefe demônio em idle ---
+                    case BOSS_DEMONIO_IDLE:
+                        current_boss_sprite = boss.sprite_demonio_idle;
+                        current_frame_w = boss.frame_largura_demonio_idle; current_frame_h = boss.frame_altura_demonio_idle;
+                        break;
+                    // --- NOVO: Desenha os novos estados ---
+                    case BOSS_DEMONIO_ATACANDO:
+                        current_boss_sprite = boss.sprite_demonio_ataque;
+                        current_frame_w = boss.frame_largura_demonio_ataque; current_frame_h = boss.frame_altura_demonio_ataque;
+                        break;
+                    case BOSS_DEMONIO_DANO:
+                        current_boss_sprite = boss.sprite_demonio_dano;
+                        current_frame_w = boss.frame_largura_demonio_dano; current_frame_h = boss.frame_altura_demonio_dano;
+                        break;
+                    case BOSS_DEMONIO_MORRENDO:
+                        current_boss_sprite = boss.sprite_demonio_morte;
+                        current_frame_w = boss.frame_largura_demonio_morte; current_frame_h = boss.frame_altura_demonio_morte;
+                        break;
+                    default:
+                        break;
+                }
+                if(current_boss_sprite) {
+                    al_draw_scaled_bitmap(current_boss_sprite,
+                                          boss.frame_atual * current_frame_w, 0,
+                                          current_frame_w, current_frame_h,
+                                          draw_x, draw_y,
+                                          current_frame_w * boss.escala, current_frame_h * boss.escala,
+                                          ALLEGRO_FLIP_HORIZONTAL);
+                }
+            }
+
+
             // --- DESENHO ANIMAÇÃO DO PERSONAGEM ---
             if (protagonista_estado == PROT_MORRENDO) {
                 al_draw_scaled_bitmap(sprite_personagem_morte,
-                                      personagem_frame_morte * frame_largura_personagem_morte, 0,
-                                      frame_largura_personagem_morte, frame_altura,
-                                      personagem_x, personagem_y,
-                                      frame_largura_personagem_morte * escala_personagens, frame_altura * escala_personagens, 0);
+                                     personagem_frame_morte * frame_largura_personagem_morte, 0,
+                                     frame_largura_personagem_morte, frame_altura,
+                                     personagem_x, personagem_y,
+                                     frame_largura_personagem_morte * escala_personagens, frame_altura * escala_personagens, 0);
             } else if (protagonist_visible) {
                 if (pulando)
                     al_draw_scaled_bitmap(sprite_pulando, frame_pulando * frame_largura_pulando, 0, frame_largura_pulando, frame_altura,
@@ -1461,6 +1941,17 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                 }
             }
 
+            // --- NOVO: Desenha Projéteis do Chefe ---
+             for (int i = 0; i < MAX_BOSS_PROJECTILES; i++) {
+                if (boss_projectiles[i].ativa) {
+                    al_draw_scaled_rotated_bitmap(sprite_demon_projetil,
+                                                  boss_proj_largura_original / 2.0, boss_proj_altura_original / 2.0,
+                                                  boss_projectiles[i].x - deslocamento_x, boss_projectiles[i].y,
+                                                  escala_boss_proj, escala_boss_proj,
+                                                  boss_projectiles[i].angulo, 0);
+                }
+            }
+
             // --- Desenha Inimigos (ATUALIZADO) ---
             for (int i = 0; i < MAX_INIMIGOS; i++) {
                 if (inimigos[i].ativa) {
@@ -1489,7 +1980,7 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                                 current_enemy_sprite = sprite_policial_morte; // Usa o sprite de morte do policial
                                 current_frame_largura_inimigo = frame_largura_policial_morte; // Usa a largura do frame do policial
                                 break;
-                         }
+                        }
                     }
 
                     if (current_enemy_sprite) {
@@ -1527,11 +2018,11 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
             for (int i = 0; i < MAX_MONEY_NOTES; i++) {
                 if (money_notes[i].ativa) {
                     al_draw_scaled_bitmap(money_notes[i].sprite_bitmap,
-                                          0, 0,
-                                          al_get_bitmap_width(money_notes[i].sprite_bitmap), al_get_bitmap_height(money_notes[i].sprite_bitmap),
-                                          money_notes[i].x - deslocamento_x, money_notes[i].y,
-                                          money_notes[i].hitbox_width, money_notes[i].hitbox_height,
-                                          0);
+                                         0, 0,
+                                         al_get_bitmap_width(money_notes[i].sprite_bitmap), al_get_bitmap_height(money_notes[i].sprite_bitmap),
+                                         money_notes[i].x - deslocamento_x, money_notes[i].y,
+                                         money_notes[i].hitbox_width, money_notes[i].hitbox_height,
+                                         0);
                 }
             }
 
@@ -1544,8 +2035,28 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
             al_draw_filled_rectangle(10, 10, 10 + health_bar_width, 30, health_color);
             al_draw_rectangle(10, 10, 10 + 200, 30, al_map_rgb(255, 255, 255), 2);
             al_draw_textf(fonte, al_map_rgb(255, 255, 255), 220, 15, 0, "HP: %d", protagonist_health);
-            
+
             al_draw_textf(fonte, al_map_rgb(255, 255, 0), LARGURA - 10, 10, ALLEGRO_ALIGN_RIGHT, "R$ %d", player_money);
+
+            // --- NOVO: Desenha a Barra de Vida do Chefe ---
+            if (boss.ativa && boss.estado >= BOSS_DEMONIO_IDLE) {
+                float boss_health_bar_w = 400;
+                float boss_health_bar_h = 25;
+                float boss_health_bar_x = LARGURA / 2 - boss_health_bar_w / 2;
+                float boss_health_bar_y = 20;
+
+                float current_health_w = ((float)boss.health / MAX_BOSS_HEALTH) * boss_health_bar_w;
+                if(current_health_w < 0) current_health_w = 0;
+
+                // Barra de fundo
+                al_draw_filled_rectangle(boss_health_bar_x, boss_health_bar_y, boss_health_bar_x + boss_health_bar_w, boss_health_bar_y + boss_health_bar_h, al_map_rgb(50, 0, 0));
+                // Barra de vida atual
+                al_draw_filled_rectangle(boss_health_bar_x, boss_health_bar_y, boss_health_bar_x + current_health_w, boss_health_bar_y + boss_health_bar_h, al_map_rgb(200, 0, 50));
+                // Borda
+                al_draw_rectangle(boss_health_bar_x, boss_health_bar_y, boss_health_bar_x + boss_health_bar_w, boss_health_bar_y + boss_health_bar_h, al_map_rgb(255, 255, 255), 2);
+                al_draw_text(fonte, al_map_rgb(255, 255, 255), LARGURA / 2, boss_health_bar_y + boss_health_bar_h + 5, ALLEGRO_ALIGN_CENTER, "Lilith, a Profana");
+            }
+
 
             al_flip_display();
         }
@@ -1582,15 +2093,27 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     al_destroy_bitmap(sprite_policial_parado);
     al_destroy_bitmap(sprite_policial_arremesso);
     al_destroy_bitmap(sprite_explosao);
+    al_destroy_bitmap(sprite_policial_morte);
+    // NOVO: Limpa os recursos do chefe
+    al_destroy_bitmap(sprite_gatopreto);
+    al_destroy_bitmap(sprite_prostituta_parada);
+    al_destroy_bitmap(sprite_prostituta_trans1);
+    al_destroy_bitmap(sprite_demon_trans2);   // Libera o novo sprite de transformação
+    al_destroy_bitmap(sprite_demon_parado); // Libera o sprite de demônio idle
+    // NOVO: Limpa os recursos dos novos sprites de combate do chefe
+    al_destroy_bitmap(sprite_demon_ataque);
+    al_destroy_bitmap(sprite_demon_dano);
+    al_destroy_bitmap(sprite_demon_morte);
+    al_destroy_bitmap(sprite_demon_projetil);
+
     al_destroy_timer(timer);
 
     if (protagonista_estado == PROT_MORRENDO && personagem_morte_animacao_finalizada) {
         should_restart = game_over_screen(janela, fila, fonte);
     }
-    
+
     return should_restart;
 }
-
 
 
 
