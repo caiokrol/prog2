@@ -15,7 +15,7 @@
 
 
 // --- Novas Definições para o Chefe ---
-#define BOSS_SPAWN_X 1500.0f
+#define BOSS_SPAWN_X 15000.0f
 #define BOSS_INTERACTION_DISTANCE 200.0f
 
 #define BOSS_PROSTITUTA_PARADA_FRAME_COUNT 5
@@ -235,6 +235,9 @@ typedef struct {
 #define MONEY_NOTE_LIFETIME 10.0 // Tempo em segundos antes de uma nota desaparecer
 #define MONEY_NOTE_SCALE 0.3 // Escala para sprites de notas de dinheiro
 
+// --- NOVO: Variável global para rastrear se o chefe foi permanentemente derrotado ---
+bool boss_defeated_permanently = false;
+
 
 // --- Funções Auxiliares ---
 
@@ -284,6 +287,92 @@ bool check_collision(float x1, float y1, float w1, float h1, float x2, float y2,
            y1 < y2 + h2 &&
            y1 + h1 > y2;
 }
+
+// --- NOVO: Função da Tela de Vitória ---
+// Retorna true se o jogador escolher tentar novamente, false se escolher sair
+bool victory_screen(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *fonte) {
+    ALLEGRO_BITMAP *victory_image = al_load_bitmap("vitoria.png"); // Certifique-se de ter esta imagem
+    if (!victory_image) {
+        fprintf(stderr, "ERRO: Não foi possível carregar vitoria.png\n");
+        return false;
+    }
+
+    ALLEGRO_BITMAP *background_victory = al_load_bitmap("backgroundVitoria.png"); // Reutilizando o background
+    if (!background_victory) {
+        fprintf(stderr, "ERRO: Não foi possível carregar backgroundVitoria.png\n");
+        al_destroy_bitmap(victory_image);
+        return false;
+    }
+
+    const char *opcoes_victory[] = {
+        "Jogar Novamente",
+        "Sair do Jogo"
+    };
+    int num_opcoes_victory = sizeof(opcoes_victory) / sizeof(opcoes_victory[0]);
+    int opcao_selecionada_v = 0;
+
+    bool sair_victory_screen = false;
+    bool restart_game = false;
+
+    while (!sair_victory_screen) {
+        ALLEGRO_EVENT ev;
+        al_wait_for_event(fila, &ev);
+
+        if (ev.type == ALLEGRO_EVENT_KEY_DOWN) {
+            switch (ev.keyboard.keycode) {
+                case ALLEGRO_KEY_UP:
+                    opcao_selecionada_v--;
+                    if (opcao_selecionada_v < 0) opcao_selecionada_v = num_opcoes_victory - 1;
+                    break;
+                case ALLEGRO_KEY_DOWN:
+                    opcao_selecionada_v++;
+                    if (opcao_selecionada_v >= num_opcoes_victory) opcao_selecionada_v = 0;
+                    break;
+                case ALLEGRO_KEY_ENTER:
+                    if (opcao_selecionada_v == 0) { // Jogar Novamente
+                        restart_game = true;
+                    } else { // Sair do Jogo
+                        restart_game = false;
+                    }
+                    sair_victory_screen = true;
+                    break;
+                case ALLEGRO_KEY_ESCAPE:
+                    restart_game = false;
+                    sair_victory_screen = true;
+                    break;
+            }
+        } else if (ev.type == ALLEGRO_EVENT_DISPLAY_CLOSE) {
+            restart_game = false;
+            sair_victory_screen = true;
+        }
+
+        al_draw_scaled_bitmap(background_victory, 0, 0,
+                                al_get_bitmap_width(background_victory), al_get_bitmap_height(background_victory),
+                                0, 0, LARGURA, ALTURA, 0);
+
+        al_draw_scaled_bitmap(victory_image, 0, 0,
+                                al_get_bitmap_width(victory_image), al_get_bitmap_height(victory_image),
+                                (LARGURA - al_get_bitmap_width(victory_image)) / 2.0,
+                                (ALTURA / 2.0 - al_get_bitmap_height(victory_image) / 2.0) - 50,
+                                al_get_bitmap_width(victory_image), al_get_bitmap_height(victory_image), 0);
+
+        al_draw_text(fonte, al_map_rgb(0, 255, 0), LARGURA / 2, ALTURA / 2 + 50, ALLEGRO_ALIGN_CENTER, "VOCÊ VENCEU!");
+
+
+        int start_y = ALTURA / 2 + 130;
+        for (int i = 0; i < num_opcoes_victory; i++) {
+            ALLEGRO_COLOR cor_texto = (i == opcao_selecionada_v) ? al_map_rgb(0, 255, 100) : al_map_rgb(255, 255, 255);
+            al_draw_text(fonte, cor_texto, LARGURA / 2, start_y + i * al_get_font_line_height(fonte) * 1.5, ALLEGRO_ALIGN_CENTER, opcoes_victory[i]);
+        }
+
+        al_flip_display();
+    }
+
+    al_destroy_bitmap(victory_image);
+    al_destroy_bitmap(background_victory);
+    return restart_game;
+}
+
 
 // --- Função da Tela de Game Over ---
 // Retorna true se o jogador escolher tentar novamente, false se escolher sair
@@ -344,14 +433,14 @@ bool game_over_screen(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGR
         }
 
         al_draw_scaled_bitmap(background_game_over, 0, 0,
-                              al_get_bitmap_width(background_game_over), al_get_bitmap_height(background_game_over),
-                              0, 0, LARGURA, ALTURA, 0);
+                                al_get_bitmap_width(background_game_over), al_get_bitmap_height(background_game_over),
+                                0, 0, LARGURA, ALTURA, 0);
 
         al_draw_scaled_bitmap(game_over_image, 0, 0,
-                              al_get_bitmap_width(game_over_image), al_get_bitmap_height(game_over_image),
-                              (LARGURA - al_get_bitmap_width(game_over_image)) / 2.0,
-                              (ALTURA / 2.0 - al_get_bitmap_height(game_over_image) / 2.0) - 50,
-                              al_get_bitmap_width(game_over_image), al_get_bitmap_height(game_over_image), 0);
+                                al_get_bitmap_width(game_over_image), al_get_bitmap_height(game_over_image),
+                                (LARGURA - al_get_bitmap_width(game_over_image)) / 2.0,
+                                (ALTURA / 2.0 - al_get_bitmap_height(game_over_image) / 2.0) - 50,
+                                al_get_bitmap_width(game_over_image), al_get_bitmap_height(game_over_image), 0);
 
         int start_y = ALTURA / 2 + 130;
         for (int i = 0; i < num_opcoes_game_over; i++) {
@@ -531,7 +620,7 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
     int frame_largura_policial_parado = al_get_bitmap_width(sprite_policial_parado) / frame_total_policial_parado;
     int frame_largura_policial_arremesso = al_get_bitmap_width(sprite_policial_arremesso) / frame_total_policial_arremesso;
     int frame_largura_policial_morte = al_get_bitmap_width(sprite_policial_morte) / frame_total_policial_morte;
-    int frame_largura_explosao = al_get_bitmap_width(sprite_explosao) / frame_total_explosao;
+    int frame_largura_explosao = al_get_bitmap_width(sprite_explosao); // Já está em uma linha
     int frame_altura_explosao = al_get_bitmap_height(sprite_explosao); // O sprite de explosão já tem todos os frames em uma linha
 
     int inimigo_largura_sprite_max = (frame_largura_inimigo_parado > frame_largura_inimigo_andando) ? frame_largura_inimigo_parado : frame_largura_inimigo_andando;
@@ -986,7 +1075,7 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                     } else {
                         personagem_morte_animacao_finalizada = true;
                         jogando = false;
-                        should_restart = false;
+                        should_restart = false; // Define como false por enquanto, será definido na game_over_screen
                         fprintf(stderr, "DEBUG: Animação de morte do protagonista finalizada. Indo para tela de Game Over.\n");
                     }
                 }
@@ -1079,7 +1168,8 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
 
             // --- Lógica de Spawn de Inimigos (ATUALIZADA) ---
             tempo_para_spawn_inimigo -= 1.0 / 60.0;
-            if (tempo_para_spawn_inimigo <= 0) {
+            // Modificado: Não spawna inimigos se o chefe estiver ativo OU já tiver sido permanentemente derrotado
+            if (tempo_para_spawn_inimigo <= 0 && !boss.ativa && !boss_defeated_permanently) {
                 for (int i = 0; i < MAX_INIMIGOS; i++) {
                     if (!inimigos[i].ativa) {
                         // Decide o tipo de inimigo a ser spawnado
@@ -1125,7 +1215,8 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
 
             // --- Lógica de Spawn e Atualização de Dinheiro ---
             time_to_spawn_money -= 1.0 / 60.0;
-            if (time_to_spawn_money <= 0) {
+            // Modificado: Não spawna dinheiro se o chefe estiver ativo OU já tiver sido permanentemente derrotado
+            if (time_to_spawn_money <= 0 && !boss.ativa && !boss_defeated_permanently) {
                 for (int i = 0; i < MAX_MONEY_NOTES; i++) {
                     if (!money_notes[i].ativa) {
                         int type_index = rand() % num_money_types;
@@ -1177,7 +1268,7 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
             }
 
             for (int i = 0; i < MAX_OBSTACULOS; i++) {
-                if (obstaculos[i].ativa && (obstaculos[i].x + obstaculos[i].width) < deslocamento_x - LARGURA / 2) {
+                if (obstaculos[i].ativa && ((obstaculos[i].x + obstaculos[i].width) < deslocamento_x - LARGURA / 2) && !boss.ativa) {
                     fprintf(stderr, "DEBUG: Reciclando obstaculo %d.\n", i);
                     int type_index = rand() % num_obstacle_types;
                     obstaculos[i].sprite_bitmap = obstacle_types[type_index].sprite;
@@ -1219,10 +1310,20 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                 }
             }
 
-            // --- Lógica de Ativação e Atualização do Chefe ---
-            // Verifica se o jogador alcançou a área do chefe
-            if (!boss.ativa && deslocamento_x >= BOSS_SPAWN_X - LARGURA) {
+            // --- Lógica de Ativação e Atualização do Chefe (Modificado) ---
+            // Verifica se o jogador alcançou a área do chefe E se o chefe ainda não foi permanentemente derrotado
+            if (!boss.ativa && deslocamento_x >= BOSS_SPAWN_X - LARGURA && !boss_defeated_permanently) {
                 boss.ativa = true;
+                fprintf(stderr, "DEBUG: Chefe ativado. Removendo inimigos e obstáculos.\n");
+                for (int i = 0; i < MAX_INIMIGOS; i++) {
+                    inimigos[i].ativa = false;
+                }
+                for (int i = 0; i < MAX_OBSTACULOS; i++) {
+                    obstaculos[i].ativa = false;
+                }
+                for (int i = 0; i < MAX_MONEY_NOTES; i++) {
+                    money_notes[i].ativa = false;
+                }
                 boss.estado = BOSS_PARADA;
                 boss.frame_atual = 0;
                 boss.acc_animacao = 0;
@@ -1323,7 +1424,7 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                                             fprintf(stderr, "DEBUG: Chefe lançou projétil %d.\n", i);
                                             break;
                                         }
-                                     }
+                                    }
                                 }
                             } else {
                                 // Fim da animação de ataque
@@ -1356,8 +1457,11 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                                  boss.frame_atual++;
                              } else {
                                  // Fim da animação de morte
-                                 boss.ativa = false; // Desativa o chefe permanentemente
-                                 fprintf(stderr, "DEBUG: CHEFE DERROTADO!\n");
+                                 boss.ativa = false; // Desativa o chefe
+                                 boss_defeated_permanently = true; // Define que o chefe foi derrotado permanentemente
+                                 jogando = false; // Sai do loop principal do jogo para ir para a tela de vitória
+                                 should_restart = true; // Prepara para a tela de vitória
+                                 fprintf(stderr, "DEBUG: CHEFE DERROTADO PERMANENTEMENTE! Indo para tela de Vitoria.\n");
                              }
                         }
                         break;
@@ -1828,7 +1932,7 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
             }
 
             // --- NOVO: Desenha a Entrada do Chefe e o Chefe ---
-            if (boss.ativa) {
+            if (boss.ativa || (boss_defeated_permanently && deslocamento_x < BOSS_SPAWN_X + entrance.width)) { // Desenha a entrada mesmo se o chefe foi derrotado, se estiver na tela
                 // Desenha a entrada primeiro (para ficar atrás do chefe)
                 al_draw_scaled_bitmap(entrance.sprite_bitmap,
                                      0, 0,
@@ -1836,7 +1940,9 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                                      entrance.x - deslocamento_x, entrance.y,
                                      entrance.width, entrance.height,
                                      0);
+            }
 
+            if (boss.ativa) {
                 // Desenha o chefe com base no seu estado atual
                 float draw_x = boss.x - deslocamento_x;
                 float draw_y = boss.y;
@@ -1883,11 +1989,11 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                 }
                 if(current_boss_sprite) {
                     al_draw_scaled_bitmap(current_boss_sprite,
-                                          boss.frame_atual * current_frame_w, 0,
-                                          current_frame_w, current_frame_h,
-                                          draw_x, draw_y,
-                                          current_frame_w * boss.escala, current_frame_h * boss.escala,
-                                          ALLEGRO_FLIP_HORIZONTAL);
+                                         boss.frame_atual * current_frame_w, 0,
+                                         current_frame_w, current_frame_h,
+                                         draw_x, draw_y,
+                                         current_frame_w * boss.escala, current_frame_h * boss.escala,
+                                         ALLEGRO_FLIP_HORIZONTAL);
                 }
             }
 
@@ -1985,11 +2091,11 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
 
                     if (current_enemy_sprite) {
                         al_draw_scaled_bitmap(current_enemy_sprite,
-                                              inimigos[i].frame_atual * current_frame_largura_inimigo, 0,
-                                              current_frame_largura_inimigo, inimigo_altura_sprite,
-                                              inimigos[i].x - deslocamento_x, inimigos[i].y,
-                                              current_frame_largura_inimigo * escala_personagens, inimigo_altura_sprite * escala_personagens,
-                                              ALLEGRO_FLIP_HORIZONTAL);
+                                             inimigos[i].frame_atual * current_frame_largura_inimigo, 0,
+                                             current_frame_largura_inimigo, inimigo_altura_sprite,
+                                             inimigos[i].x - deslocamento_x, inimigos[i].y,
+                                             current_frame_largura_inimigo * escala_personagens, inimigo_altura_sprite * escala_personagens,
+                                             ALLEGRO_FLIP_HORIZONTAL);
                     }
                 }
             }
@@ -2001,11 +2107,11 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
                         float draw_x = (granadas[i].x - deslocamento_x) - (frame_largura_explosao * escala_personagens / 2.0);
                         float draw_y = granadas[i].y - (frame_altura_explosao * escala_personagens / 2.0);
                         al_draw_scaled_bitmap(sprite_explosao,
-                                              granadas[i].frame_explosao * frame_largura_explosao, 0,
-                                              frame_largura_explosao, frame_altura_explosao,
-                                              draw_x, draw_y,
-                                              frame_largura_explosao * escala_personagens, frame_altura_explosao * escala_personagens,
-                                              0);
+                                             granadas[i].frame_explosao * frame_largura_explosao, 0,
+                                             frame_largura_explosao, frame_altura_explosao,
+                                             draw_x, draw_y,
+                                             frame_largura_explosao * escala_personagens, frame_altura_explosao * escala_personagens,
+                                             0);
                     } else {
                         // Desenha a granada em si como um círculo
                         al_draw_filled_circle(granadas[i].x - deslocamento_x, granadas[i].y, 8, al_map_rgb(50, 80, 50));
@@ -2110,10 +2216,14 @@ bool jogo(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_FONT *font
 
     if (protagonista_estado == PROT_MORRENDO && personagem_morte_animacao_finalizada) {
         should_restart = game_over_screen(janela, fila, fonte);
+    } else if (boss_defeated_permanently) { // Se o chefe foi derrotado, mostra a tela de vitória
+        should_restart = victory_screen(janela, fila, fonte);
     }
 
     return should_restart;
 }
+
+
 
 
 
