@@ -356,12 +356,12 @@ bool victory_screen(ALLEGRO_DISPLAY *janela, ALLEGRO_EVENT_QUEUE *fila, ALLEGRO_
                                 (ALTURA / 2.0 - al_get_bitmap_height(victory_image) / 2.0) - 50,
                                 al_get_bitmap_width(victory_image), al_get_bitmap_height(victory_image), 0);
 
-        al_draw_text(fonte, al_map_rgb(0, 255, 0), LARGURA / 2, ALTURA / 2 + 50, ALLEGRO_ALIGN_CENTER, "VOCÊ VENCEU!");
+        al_draw_text(fonte, al_map_rgb(128, 0, 128), LARGURA / 2, ALTURA / 2 + 50, ALLEGRO_ALIGN_CENTER, "VOCÊ CHEGOU AO PARAÍSO DE MAOMÉ!");
 
 
         int start_y = ALTURA / 2 + 130;
         for (int i = 0; i < num_opcoes_victory; i++) {
-            ALLEGRO_COLOR cor_texto = (i == opcao_selecionada_v) ? al_map_rgb(0, 255, 100) : al_map_rgb(255, 255, 255);
+            ALLEGRO_COLOR cor_texto = (i == opcao_selecionada_v) ? al_map_rgb(128, 0, 128) : al_map_rgb(255, 255, 255);
             al_draw_text(fonte, cor_texto, LARGURA / 2, start_y + i * al_get_font_line_height(fonte) * 1.5, ALLEGRO_ALIGN_CENTER, opcoes_victory[i]);
         }
 
