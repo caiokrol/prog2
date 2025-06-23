@@ -1158,7 +1158,7 @@ void gerenciar_inimigos(Inimigo inimigos[], float deslocamento_x, float dt, floa
     float inimigo_velocidade_andando_base = -2.5f;
     float inimigo_velocidade_ataque_base = 0.0f; // Inimigos ficam parados ao atacar
     float noia_distancia_deteccao = 500.0f;
-    float noia_distancia_ataque = 180.0f;
+    float noia_distancia_ataque = 100.0f;
     float policial_distancia_deteccao = 800.0f; // Policial detecta de mais longe
     float policial_distancia_ataque = 700.0f;   // Policial ataca de mais longe (arremesso)
 
