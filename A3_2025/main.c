@@ -14,7 +14,7 @@
 #include <time.h> // Necessário para srand(time(NULL))
 
 // --- Novas Definições para o Chefe ---
-#define BOSS_SPAWN_X 15000.0f
+#define BOSS_SPAWN_X 1500.0f
 #define BOSS_INTERACTION_DISTANCE 200.0f
 
 #define BOSS_PROSTITUTA_PARADA_FRAME_COUNT 5
